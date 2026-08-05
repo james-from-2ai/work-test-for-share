@@ -1,0 +1,215 @@
+/* One stylesheet, no framework, no fonts to fetch. A candidate on a slow connection in
+   Nairobi or Lagos should get a usable page on the first paint, because their five minutes
+   start when the page is ready, not when it finishes loading assets. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f6f6f4;
+  --card: #ffffff;
+  --ink: #1a1a18;
+  --muted: #6b6b66;
+  --line: #e2e2dd;
+  --accent: #1f5f4f;
+  --accent-ink: #ffffff;
+  --warn: #9a5b12;
+  --danger: #a3231d;
+  --focus: #2f7fd8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16171a;
+    --card: #1e2024;
+    --ink: #ececea;
+    --muted: #9b9b96;
+    --line: #32353a;
+    --accent: #4bab90;
+    --accent-ink: #10221c;
+    --warn: #e0a45c;
+    --danger: #e8756c;
+    --focus: #6fb1f0;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.wrap {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.75rem;
+}
+
+@media (max-width: 30rem) {
+  .wrap { padding: 1.25rem 0.75rem 3rem; }
+  .card { padding: 1.15rem; border-radius: 10px; }
+}
+
+h1 { font-size: 1.35rem; line-height: 1.35; margin: 0 0 0.85rem; font-weight: 650; }
+.sub { font-size: 0.95rem; font-weight: 700; margin: 1.4rem 0 0.4rem; }
+.prompt { font-size: 1.2rem; margin-bottom: 0.6rem; }
+p { margin: 0 0 0.9rem; }
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; }
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+.rules { margin: 0 0 1.1rem; padding-left: 1.15rem; }
+.rules li { margin-bottom: 0.55rem; }
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.bar.bottom {
+  margin: 1.25rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.progress { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+
+.clock {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+.clock.warn { color: var(--warn); border-color: currentColor; }
+.clock.danger { color: var(--danger); border-color: currentColor; }
+
+.track { height: 4px; background: var(--line); border-radius: 999px; overflow: hidden; margin-bottom: 1.35rem; }
+.track-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.25s ease; }
+
+.context { font-size: 0.92rem; margin-bottom: 1rem; }
+
+/* The brief: reference material that stays put while the candidate works through a part. It
+   is visually recessed so the question itself stays the thing you read first. */
+.brief {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.1rem 0.6rem;
+  margin: 0 0 1.5rem;
+  font-size: 0.92rem;
+}
+.brief-h {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 0 0 0.7rem;
+}
+.brief p { margin: 0 0 0.75rem; }
+
+.quote {
+  margin: 0 0 0.85rem;
+  padding: 0.7rem 0.85rem;
+  border-left: 3px solid var(--accent);
+  background: var(--card);
+  border-radius: 0 6px 6px 0;
+}
+.quote figcaption {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+.quote p { font-style: italic; margin-bottom: 0.5rem; }
+.quote ol { margin: 0 0 0.5rem; padding-left: 1.2rem; }
+.quote ol li { font-style: italic; margin-bottom: 0.45rem; }
+.quote > p:last-child { margin-bottom: 0; }
+
+.datalink {
+  display: inline-block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: none;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 7px;
+  padding: 0.5rem 0.85rem;
+  margin-bottom: 0.85rem;
+}
+.datalink:hover { filter: brightness(1.08); }
+.datalink::after { content: " ↗"; }
+
+.stack { display: grid; gap: 0.35rem; margin-bottom: 0.4rem; }
+.lbl { font-size: 0.82rem; font-weight: 600; color: var(--muted); margin-top: 0.55rem; }
+
+input[type="text"], input[type="email"], textarea {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+}
+textarea { min-height: 11rem; resize: vertical; line-height: 1.5; }
+input:focus-visible, textarea:focus-visible, button:focus-visible, label:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.opts { display: grid; gap: 0.5rem; }
+.opt {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--bg);
+}
+.opt:hover { border-color: var(--accent); }
+.opt input { margin: 0.25rem 0 0; flex: none; accent-color: var(--accent); }
+.opt.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+
+.counter { font-size: 0.78rem; color: var(--muted); text-align: right; margin: 0.3rem 0 0; }
+
+button.primary {
+  font: inherit;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0;
+  border-radius: 8px;
+  padding: 0.68rem 1.15rem;
+  cursor: pointer;
+}
+button.primary:hover { filter: brightness(1.08); }
+button.primary[disabled] { opacity: 0.55; cursor: default; filter: none; }
+
+.err { color: var(--danger); font-size: 0.9rem; margin: 0.6rem 0 0; }

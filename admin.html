@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Work test admin</title>
+<link rel="stylesheet" href="/assets/styles.css">
+<style>
+  .wrap { max-width: 68rem; }
+  .card + .card { margin-top: 1.25rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .scroll { overflow-x: auto; }
+  .tag { font-size: 0.72rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 4px; border: 1px solid currentColor; white-space: nowrap; }
+  .tag.ready { color: var(--muted); }
+  .tag.running { color: var(--warn); }
+  .tag.done { color: var(--accent); }
+  .tag.expired { color: var(--danger); }
+  .row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: flex-end; }
+  .row > label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+  code { font-size: 0.82rem; word-break: break-all; }
+  details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); }
+  .ans { margin: 0.5rem 0 0; padding-left: 0.75rem; border-left: 2px solid var(--line); }
+  .ans p { margin: 0 0 0.35rem; }
+  button.ghost { font: inherit; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 0.3rem 0.6rem; color: inherit; cursor: pointer; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <section class="card">
+    <p class="eyebrow">Internal</p>
+    <h1>Work test admin</h1>
+    <p class="muted">The admin key is held in this tab only, never written to storage. Reloading asks for it again, on purpose.</p>
+    <div class="row">
+      <div style="flex:1 1 18rem">
+        <label for="key">Admin key</label>
+        <input id="key" type="text" autocomplete="off" placeholder="paste ADMIN_KEY">
+      </div>
+      <button class="primary" id="load">Load results</button>
+    </div>
+    <p class="err" id="err" hidden></p>
+  </section>
+
+  <section class="card">
+    <h1>Issue links</h1>
+    <p class="muted small">One candidate per line, as <code>Name, email@example.com</code>. Each gets a single-use link. Sending the email is up to you; nothing is emailed from here.</p>
+    <textarea id="people" placeholder="Amina Yusuf, amina@example.com&#10;Tom Baker, tom@example.com"></textarea>
+    <div class="row" style="margin-top:0.6rem">
+      <button class="primary" id="create">Create links</button>
+      <button class="ghost" id="copy" hidden>Copy all links</button>
+    </div>
+    <div id="new"></div>
+  </section>
+
+  <section class="card">
+    <div class="bar">
+      <h1 style="margin:0">Candidates</h1>
+      <button class="ghost" id="csv">Download CSV</button>
+    </div>
+    <div class="scroll"><table id="table"><tbody><tr><td class="muted">Enter the admin key and load.</td></tr></tbody></table></div>
+  </section>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const keyOf = () => $('#key').value.trim();
+
+function fail(msg) { const e = $('#err'); e.textContent = msg; e.hidden = !msg; }
+
+async function admin(action, extra = {}) {
+  fail('');
+  const res = await fetch('/api/admin', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-admin-key': keyOf() },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (action === 'csv') return res;
+  const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
+  if (!data.ok) fail({
+    unauthorized: 'That admin key was rejected.',
+    admin_disabled: 'ADMIN_KEY is not set on the server, so the admin API is switched off.',
+    server_not_configured: 'The TESTS KV namespace is not bound to this deployment.',
+  }[data.error] || `Request failed: ${data.error || res.status}`);
+  return data;
+}
+
+const fmt = (ms) => (ms ? new Date(ms).toLocaleString() : '—');
+
+function renderRows(rows, origin) {
+  const body = document.createElement('tbody');
+  if (!rows.length) {
+    body.innerHTML = '<tr><td class="muted">No candidates yet. Issue a link above.</td></tr>';
+  }
+  body.insertAdjacentHTML('afterbegin', rows.length ? `<tr>
+    <th>Candidate</th><th>Status</th><th>Progress</th><th>Started</th><th>Answers</th><th></th></tr>` : '');
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    const answers = r.answers.map((a) => `<p><strong>Q${a.index + 1}.</strong> ${esc(a.prompt)}<br>
+      ${esc(a.value) || '<em class="muted">blank</em>'}
+      <span class="muted small">(${Math.round(a.msSpent / 1000)}s${a.pastes ? `, ${a.pastes} paste${a.pastes > 1 ? 's' : ''}` : ''}${a.blurs ? `, ${a.blurs} tab switch${a.blurs > 1 ? 'es' : ''}` : ''})</span></p>`).join('');
+    tr.innerHTML = `
+      <td><strong>${esc(r.name)}</strong><br><span class="muted small">${esc(r.email || '')}</span></td>
+      <td><span class="tag ${r.phase}">${r.phase}${r.ranOut ? ' (ran out)' : ''}</span></td>
+      <td>${r.answered} / ${r.total}</td>
+      <td class="small">${fmt(r.startedAt)}</td>
+      <td>${answers ? `<details><summary>${r.answered} answer${r.answered === 1 ? '' : 's'}</summary><div class="ans">${answers}</div></details>` : '<span class="muted">—</span>'}</td>
+      <td class="small"><details><summary>link</summary><code>${origin}/?t=${r.token}</code></details></td>`;
+    body.append(tr);
+  }
+  $('#table').replaceChildren(body);
+}
+
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+async function load() {
+  const data = await admin('list');
+  if (data.ok) renderRows(data.rows, data.origin);
+}
+
+$('#load').addEventListener('click', load);
+
+$('#create').addEventListener('click', async () => {
+  const people = $('#people').value.split('\n').map((line) => {
+    const [name, email] = line.split(',');
+    return { name: (name || '').trim(), email: (email || '').trim() };
+  }).filter((p) => p.name);
+  if (!people.length) return fail('Add at least one candidate.');
+  const data = await admin('create', { people });
+  if (!data.ok) return;
+  window.__links = data.created.map((c) => `${c.name}\t${c.link}`).join('\n');
+  $('#new').innerHTML = `<div class="ans">${data.created.map((c) => `<p><strong>${esc(c.name)}</strong><br><code>${esc(c.link)}</code></p>`).join('')}</div>`;
+  $('#copy').hidden = false;
+  $('#people').value = '';
+  load();
+});
+
+$('#copy').addEventListener('click', () => navigator.clipboard.writeText(window.__links || ''));
+
+$('#csv').addEventListener('click', async () => {
+  const res = await admin('csv');
+  if (!res || !res.ok) return fail('Could not download the CSV. Check the admin key.');
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'work-test-results.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>

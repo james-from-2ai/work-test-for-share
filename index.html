@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>2AI Work Task</title>
+<link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<main id="app" class="wrap">
+  <p class="muted" id="boot">Loading&hellip;</p>
+</main>
+
+<!-- Screens are cloned from these templates. Nothing belonging to a later question is ever in
+     the live DOM; the current question is built entirely from the server's response. -->
+
+<template id="tpl-invalid">
+  <section class="card">
+    <h1>This link is not valid</h1>
+    <p>The link may have been mistyped, or it may have been withdrawn. Reply to the email you received and we will send a fresh one.</p>
+    <p class="muted">If you were part-way through, do not start again from a new link. Email <a href="mailto:careers@aiaccessinitiative.org">careers@aiaccessinitiative.org</a> and tell us what happened.</p>
+  </section>
+</template>
+
+<template id="tpl-identify">
+  <section class="card">
+    <p class="eyebrow">AI Access Initiative &middot; Performance Task</p>
+    <h1>2AI Work Task</h1>
+    <p>Enter your name and the email address you applied with, so we can match this to your application.</p>
+    <div class="stack">
+      <label class="lbl" for="cand-name">Full name</label>
+      <input id="cand-name" type="text" autocomplete="name" spellcheck="false">
+      <label class="lbl" for="cand-email">Email address</label>
+      <input id="cand-email" type="email" autocomplete="email" spellcheck="false">
+    </div>
+    <p class="err" data-hook="err" hidden></p>
+    <footer class="bar bottom">
+      <span class="muted small">Nothing has started yet. The clock starts later, and only when you say so.</span>
+      <button class="primary" data-hook="go">Continue</button>
+    </footer>
+  </section>
+</template>
+
+<template id="tpl-instructions">
+  <section class="card">
+    <p class="eyebrow">Candidate instructions</p>
+    <h1 data-hook="greeting">Before you start</h1>
+    <p>This task is <strong data-hook="duration"></strong> long and has <strong data-hook="count"></strong> questions across two parts. Read this page properly. The clock starts when you press the button at the bottom, and it does not stop.</p>
+
+    <ul class="rules">
+      <li><strong>You can use AI and a calculator.</strong> We are an AI-forward organization and we would rather see how you work with the tools you actually use. But we will only accept your first submission of this work test.</li>
+      <li><strong>If you run low on time, do not try to finish everything.</strong> Instead, explain what other main steps you would take, and leave the rest unfinished. We would much rather read that than a rushed attempt at completeness.</li>
+      <li><strong>The clock does not stop or restart.</strong> It runs on our server, so refreshing the page, closing the tab, or opening this on another device will not give you more time.</li>
+      <li><strong>You cannot go back.</strong> One question at a time. Once you continue, that answer is final and the next question appears. Do your analysis first, then write your answers.</li>
+      <li><strong>Part 1 needs a spreadsheet.</strong> You will be given a link to messy data from the government and our Operations team. Work in your own copy, in another tab, and come back here to write up.</li>
+    </ul>
+
+    <h2 class="sub">What we are looking for</h2>
+    <p>When you are communicating internally with our team, we value clarity, brevity, and reasoning transparency over formal or academic prose. We are less interested in the perfect answer than in seeing clearly described logic, well-stated uncertainties, and a strong knack for discerning which information is the highest priority.</p>
+
+    <h2 class="sub">Ambiguity is deliberate</h2>
+    <p>Some aspects of this task are intentionally vague and require you to apply judgement. Where something is unclear, make a reasonable assumption and label it. You do not need to email us to ask.</p>
+
+    <p class="muted small">Please do not share this task with anyone outside Evidence Action / 2AI. If you need a different format or an accommodation because of a disability, email <a href="mailto:careers@aiaccessinitiative.org">careers@aiaccessinitiative.org</a> before you begin, and we will sort it out.</p>
+
+    <footer class="bar bottom">
+      <span class="muted small" data-hook="who"></span>
+      <button class="primary" data-hook="begin">I understand, start the clock</button>
+    </footer>
+  </section>
+</template>
+
+<template id="tpl-question">
+  <section class="card">
+    <header class="bar">
+      <span class="progress"><span data-hook="section"></span><span data-hook="progress"></span></span>
+      <span class="clock" data-hook="clock" role="timer" aria-live="off">&mdash;</span>
+    </header>
+    <div class="track" aria-hidden="true"><div class="track-fill" data-hook="track"></div></div>
+
+    <aside class="brief" data-hook="brief" hidden></aside>
+
+    <h1 class="prompt" data-hook="prompt"></h1>
+    <p class="context muted" data-hook="context" hidden></p>
+    <div data-hook="field"></div>
+    <p class="err" data-hook="err" hidden></p>
+    <footer class="bar bottom">
+      <span class="muted small">Answers are final once you continue.</span>
+      <button class="primary" data-hook="next"></button>
+    </footer>
+  </section>
+</template>
+
+<template id="tpl-done">
+  <section class="card">
+    <h1 data-hook="title">Submitted</h1>
+    <p data-hook="body"></p>
+    <p class="muted">You can close this tab. There is nothing else to do, and this link will not reopen the task. Our team aims to review submissions within 5 business days, and successful candidates will be invited to a follow-up interview that references this work.</p>
+  </section>
+</template>
+
+<script src="/assets/app.js"></script>
+</body>
+</html>

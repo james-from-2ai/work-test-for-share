@@ -1,0 +1,10 @@
+{
+  "name": "work-test",
+  "private": true,
+  "type": "module",
+  "description": "Server-timed, forward-only candidate work test. No dependencies by design.",
+  "scripts": {
+    "dev": "node tools/dev-server.mjs",
+    "test": "node tools/engine.test.mjs"
+  }
+}

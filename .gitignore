@@ -1,0 +1,3 @@
+# Local dev state. Holds practice candidates and their answers; never deploy or commit it.
+tools/.dev-store.json
+node_modules/
