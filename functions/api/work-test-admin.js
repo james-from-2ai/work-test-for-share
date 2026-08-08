@@ -30,29 +30,40 @@ import { json, readJson, secretEquals } from '../_lib/wt-kv.mjs';
 const TEST_PATH = '/';
 
 export async function onRequestPost({ request, env }) {
+  // Authenticate BEFORE reporting anything about configuration. This copy of the code also runs
+  // on a public demo with no Access gate in front of it, where an anonymous visitor should learn
+  // nothing beyond "wrong key", not which variables the deployment is missing.
+  const supplied = request.headers.get('x-admin-key') || '';
+
+  /**
+   * Setting a Pages variable and having it reach a Function are two different things: it has to
+   * be on the right environment AND a deployment has to be made after it was saved. When one has
+   * not arrived, the useful question is what DID, so these errors can list the variable names
+   * this Function can see. Names only, never values.
+   *
+   * Only for a caller who supplied a key, so a passer-by on the public demo learns nothing about
+   * the deployment while someone actually configuring it still gets a straight answer.
+   */
+  const diagnose = (error, detail, status) => json(
+    supplied ? { ok: false, error, detail, visibleNames: Object.keys(env).sort() } : { ok: false, error },
+    status,
+  );
+
+  if (!env.ADMIN_KEY) {
+    return diagnose('admin_disabled', 'ADMIN_KEY is not visible to this deployment.', 503);
+  }
+  if (!secretEquals(supplied, env.ADMIN_KEY)) {
+    return json({ ok: false, error: 'unauthorized' }, 401);
+  }
+
+  // Only now, once the caller is authenticated, say anything about storage.
   const { store } = storeFor(env);
   if (!store) {
-    return json({
-      ok: false,
-      error: 'server_not_configured',
-      detail: 'Set AIRTABLE_TOKEN, or bind a KV namespace as TESTS, then redeploy.',
-    }, 500);
-  }
-  if (!env.ADMIN_KEY) {
-    // Setting a Pages variable and having it reach a Function are two different things: the
-    // variable has to be on the right environment AND a deployment has to be made after it was
-    // saved. When it has not arrived, the useful question is what DID arrive, so list the names
-    // this Function can see. Names only, never values, and only in this already-broken state, so
-    // it cannot be used to probe a working deployment. Access still gates the whole hostname.
-    return json({
-      ok: false,
-      error: 'admin_disabled',
-      detail: 'ADMIN_KEY is not visible to this deployment.',
-      visibleNames: Object.keys(env).sort(),
-    }, 503);
-  }
-  if (!secretEquals(request.headers.get('x-admin-key') || '', env.ADMIN_KEY)) {
-    return json({ ok: false, error: 'unauthorized' }, 401);
+    return diagnose(
+      'server_not_configured',
+      'No storage. Set AIRTABLE_TOKEN (or AirtablePAT), or bind a KV namespace as TESTS, then REDEPLOY.',
+      500,
+    );
   }
 
   const body = await readJson(request);
