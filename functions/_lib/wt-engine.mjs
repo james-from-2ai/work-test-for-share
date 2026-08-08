@@ -21,7 +21,8 @@
  * recorded as signals in the export, not blocked. Treat the result as evidence, not proof.
  */
 
-import { QUESTIONS, BRIEFS, DURATION_SEC, GRACE_SEC, INTEGRITY } from './questions.js';
+import { QUESTIONS, BRIEFS, SECTIONS, DURATION_SEC, GRACE_SEC, INTEGRITY } from './wt-questions.mjs';
+import { sanitizeRich, richIsEmpty, richToText, richWordCount } from './wt-rich.mjs';
 
 const KEY = (token) => `c:${token}`;
 /**
@@ -40,12 +41,21 @@ const ROSTER = 'roster';
 export function config(overrides = {}) {
   const d = Number(overrides.durationSec);
   const g = Number(overrides.graceSec);
+  // Cloudflare's variable editor is a textarea, so a value can easily carry a trailing newline
+  // or space that nobody can see in the dashboard. Comparing raw strings would then silently
+  // ignore the setting, which for OPEN_REGISTRATION would fail OPEN. Trim and lowercase first.
+  const flag = (v) => String(v ?? '').trim().toLowerCase();
   return {
     durationSec: Number.isFinite(d) && d > 0 ? Math.floor(d) : DURATION_SEC,
     graceSec: Number.isFinite(g) && g >= 0 ? Math.floor(g) : GRACE_SEC,
     // When open registration is on, anyone with the unlisted URL can enter their own name and
     // start. Turn it off (OPEN_REGISTRATION=off) to accept only admin-issued links.
-    openRegistration: String(overrides.openRegistration ?? '') !== 'off',
+    openRegistration: flag(overrides.openRegistration) !== 'off',
+    // Lets whoever is sitting at the candidate page wipe their own session and start again.
+    // This exists for internal testing and DESTROYS the central guarantee: with it on, the
+    // clock is restartable by anyone holding the link. It defaults to off and has to be turned
+    // on deliberately (ALLOW_SELF_RESET=on), so forgetting about it fails safe.
+    allowSelfReset: flag(overrides.allowSelfReset) === 'on',
   };
 }
 
@@ -81,6 +91,55 @@ function publicQuestion(index) {
   };
 }
 
+/**
+ * Where the candidate is, measured in effort rather than in questions.
+ *
+ * Counting questions would mislead: question 4 of 6 is two thirds of the way through the list
+ * but only just past halfway through the work, because Part 1 carries twice the recommended
+ * time of Part 2. Weighting by `recommendedMin` means the bar matches how long is actually left,
+ * which is the thing a candidate on a clock is trying to judge.
+ *
+ * Safe to send in full. It describes the shape of the task, which the instructions page already
+ * states outright, and never the content of a question the candidate has not reached.
+ */
+function progressOf(answered) {
+  const totalMin = SECTIONS.reduce((n, s) => n + s.recommendedMin, 0) || 1;
+  let current = -1;
+
+  const sections = SECTIONS.map((s, i) => {
+    const indexes = QUESTIONS
+      .map((q, qi) => ((q.section || SECTIONS[0].id) === s.id ? qi : -1))
+      .filter((qi) => qi >= 0);
+    const done = indexes.filter((qi) => qi < answered).length;
+    const holdsCurrent = indexes.includes(answered);
+    if (holdsCurrent) current = i;
+
+    return {
+      id: s.id,
+      label: s.label,
+      summary: s.summary,
+      recommendedMin: s.recommendedMin,
+      share: Math.round((s.recommendedMin / totalMin) * 100),
+      total: indexes.length,
+      done,
+      state: done >= indexes.length ? 'done' : holdsCurrent ? 'current' : 'todo',
+    };
+  });
+
+  const effortDone = sections.reduce((n, s) => n + (s.total ? (s.done / s.total) * s.recommendedMin : 0), 0);
+  const here = sections[current];
+
+  return {
+    sections,
+    sectionNumber: current + 1,
+    sectionTotal: sections.length,
+    inSection: here ? here.done + 1 : null,
+    inSectionTotal: here ? here.total : null,
+    percentDone: Math.round((effortDone / totalMin) * 100),
+    minutesLeft: sections.filter((s) => s.state !== 'done').reduce((n, s) => n + s.recommendedMin, 0),
+  };
+}
+
 function deadlineOf(rec, cfg) {
   return rec.startedAt + cfg.durationSec * 1000;
 }
@@ -107,10 +166,17 @@ function view(rec, now, cfg, extra = {}) {
     answered: rec.answers.length,
     ranOut: !!rec.ranOut,
     blockPaste: INTEGRITY.blockPaste,
+    allowSelfReset: cfg.allowSelfReset,
     ...extra,
   };
   if (rec.startedAt) out.deadline = deadlineOf(rec, cfg);
-  if (phase === 'running') out.question = publicQuestion(rec.answers.length);
+  if (phase === 'running') {
+    out.question = publicQuestion(rec.answers.length);
+    out.progress = progressOf(rec.answers.length);
+  }
+  // On the instructions screen there is no current question, but the shape of the task is
+  // exactly what someone deciding whether to press start wants to see.
+  if (phase === 'ready') out.progress = progressOf(0);
   return out;
 }
 
@@ -131,6 +197,7 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       phase: 'anonymous',
       serverNow: now,
       openRegistration: cfg.openRegistration,
+      allowSelfReset: cfg.allowSelfReset,
       durationSec: cfg.durationSec,
       total: QUESTIONS.length,
     };
@@ -166,17 +233,24 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       if (index !== rec.answers.length) return view(rec, now, cfg, { rejected: 'out_of_order' });
 
       const q = QUESTIONS[index];
-      const max = q.maxLength || (q.type === 'long' ? 2000 : 300);
-      let value = clamp(body.value, max);
-      if (q.type === 'choice') {
+      const rich = q.type === 'rich';
+      const max = q.maxLength || (rich || q.type === 'long' ? 2000 : 300);
+
+      let value;
+      if (rich) {
+        // Formatted answers arrive as blocks, never as HTML. See wt-rich.mjs for why.
+        value = sanitizeRich(body.value, max).blocks;
+      } else if (q.type === 'choice') {
         // Never trust a client-sent label; accept only an index into our own options.
         const pick = Number(body.value);
         value = Number.isInteger(pick) && q.options[pick] != null ? q.options[pick] : '';
+      } else {
+        value = clamp(body.value, max);
       }
 
       // The client blocks this too, but a required question must not be skippable by anyone
-      // hand-rolling a request. Optional questions accept an empty string and move on.
-      if (q.required !== false && value.trim() === '') return view(rec, now, cfg, { rejected: 'empty' });
+      // hand-rolling a request. Optional questions accept an empty answer and move on.
+      if (q.required !== false && richIsEmpty(value)) return view(rec, now, cfg, { rejected: 'empty' });
 
       const prevAt = rec.answers.length ? rec.answers[rec.answers.length - 1].at : rec.startedAt;
       rec.answers.push({
@@ -184,6 +258,9 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         index,
         prompt: q.prompt,
         value,
+        // Lets the admin page and the CSV know how to read `value` without re-deriving it from
+        // the question list, which may have been edited since this answer was written.
+        format: rich ? 'rich' : 'text',
         at: now,
         msSpent: now - prevAt,
         // Integrity signals, recorded not enforced. See the note at the top of this file.
@@ -193,6 +270,24 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       if (rec.answers.length >= QUESTIONS.length) rec.finishedAt = now;
       await store.put(KEY(token), rec);
       return view(rec, now, cfg);
+    }
+
+    case 'reset': {
+      // Internal testing only. Deliberately a full delete rather than a rewind: it also releases
+      // the email claim, so the tester can register again from scratch, and it leaves no
+      // half-reset record that would be confusing to review later.
+      if (!cfg.allowSelfReset) return { ok: false, error: 'reset_disabled', status: 403 };
+      await deleteCandidate(store, token);
+      return {
+        ok: true,
+        phase: 'anonymous',
+        serverNow: now,
+        openRegistration: cfg.openRegistration,
+        allowSelfReset: true,
+        durationSec: cfg.durationSec,
+        total: QUESTIONS.length,
+        wasReset: true,
+      };
     }
 
     case 'finish': {
@@ -288,11 +383,26 @@ export async function createCandidates(store, people) {
 }
 
 export async function listCandidates(store, now = Date.now(), cfg = config()) {
-  const roster = (await store.get(ROSTER)) || { tokens: [] };
+  // A store that can read a whole prefix in one go says so, because walking the roster key by
+  // key is a request per candidate. The roster path stays for stores that cannot.
+  let records;
+  if (typeof store.listByPrefix === 'function') {
+    records = await store.listByPrefix('c:');
+  } else {
+    const roster = (await store.get(ROSTER)) || { tokens: [] };
+    records = [];
+    for (const token of roster.tokens) {
+      const rec = await store.get(KEY(token));
+      if (rec) records.push(rec);
+    }
+  }
+
   const rows = [];
-  for (const token of roster.tokens) {
-    const rec = await store.get(KEY(token));
-    if (!rec) continue;
+  for (const rec of records) {
+    const token = rec && rec.token;
+    // Skip anything that is not a session record rather than throwing: one bad row must not stop
+    // a reviewer from seeing every other submission.
+    if (!token || !Array.isArray(rec.answers)) continue;
     rows.push({
       token,
       name: rec.name,
@@ -332,7 +442,6 @@ export function toCsv(rows) {
     'question', 'prompt', 'answer', 'seconds_on_question', 'words', 'pastes', 'tab_switches',
   ];
   const lines = [head.map(esc).join(',')];
-  const wordCount = (s) => (String(s || '').trim() ? String(s).trim().split(/\s+/).length : 0);
   for (const r of rows) {
     if (!r.answers.length) {
       lines.push([r.name, r.email, r.phase, iso(r.startedAt), iso(r.finishedAt), r.ranOut ? 'yes' : 'no', '', '', '', '', '', '', ''].map(esc).join(','));
@@ -341,7 +450,10 @@ export function toCsv(rows) {
     for (const a of r.answers) {
       lines.push([
         r.name, r.email, r.phase, iso(r.startedAt), iso(r.finishedAt), r.ranOut ? 'yes' : 'no',
-        a.index + 1, a.prompt, a.value, Math.round(a.msSpent / 1000), wordCount(a.value), a.pastes, a.blurs,
+        // Formatted answers flatten to text with `##` and `-` markers kept, so the structure the
+        // candidate chose survives into a spreadsheet cell.
+        a.index + 1, a.prompt, richToText(a.value), Math.round(a.msSpent / 1000), richWordCount(a.value),
+        a.pastes, a.blurs,
       ].map(esc).join(','));
     }
   }

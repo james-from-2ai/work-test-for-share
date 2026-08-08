@@ -1,0 +1,13 @@
+# Cloudflare Pages response headers.
+#
+# This site is deliberately public, so unlike the internal copy there is no Access gate behind
+# these. They are what stops a demo of a hiring assessment turning up in search results, which
+# would be a problem for the test itself: the questions are meant to be unseen before a candidate
+# opens them.
+
+/*
+  X-Robots-Tag: noindex, nofollow, noarchive
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Cache-Control: no-store

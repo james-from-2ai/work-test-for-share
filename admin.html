@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Work test admin</title>
-<link rel="stylesheet" href="/assets/styles.css">
+<link rel="stylesheet" href="assets/styles.css">
 <style>
   .wrap { max-width: 68rem; }
   .card + .card { margin-top: 1.25rem; }
@@ -22,13 +22,25 @@
   .row > label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
   code { font-size: 0.82rem; word-break: break-all; }
   details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); }
-  .ans { margin: 0.5rem 0 0; padding-left: 0.75rem; border-left: 2px solid var(--line); }
+  .ans { margin: 0.5rem 0 0; padding-left: 0.75rem; border-left: 2px solid var(--line); max-width: 46rem; }
   .ans p { margin: 0 0 0.35rem; }
+  .ans-q { color: var(--muted); font-size: 0.85rem; margin-top: 0.9rem; }
+  .ans-body { white-space: pre-wrap; }
+  .ans-body h4 { font-size: 0.95rem; font-weight: 700; margin: 0.7rem 0 0.3rem; }
+  .ans-body h5 { font-size: 0.88rem; font-weight: 700; margin: 0.6rem 0 0.25rem; }
+  .ans-body ul, .ans-body ol { margin: 0 0 0.5rem; padding-left: 1.4rem; }
+  .ans-body li { margin-bottom: 0.2rem; }
+  .ans-body > *:first-child { margin-top: 0; }
+  .ans-meta { margin-bottom: 0.5rem; }
   button.ghost { font: inherit; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 0.3rem 0.6rem; color: inherit; cursor: pointer; }
 </style>
 </head>
 <body>
-<main class="wrap">
+<div class="demo-banner">
+  <strong>Demo.</strong> This is a public preview of 2AI's timed work test, for showing people how it works.
+  Anything you type here is visible to anyone with the link, so use a made-up name and do not enter anything private.
+  It is not a live application and nobody is assessed on it.
+</div><main class="wrap">
   <section class="card">
     <p class="eyebrow">Internal</p>
     <h1>Work test admin</h1>
@@ -71,55 +83,199 @@ function fail(msg) { const e = $('#err'); e.textContent = msg; e.hidden = !msg; 
 
 async function admin(action, extra = {}) {
   fail('');
-  const res = await fetch('/api/admin', {
+  const res = await fetch('/api/work-test-admin', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-admin-key': keyOf() },
     body: JSON.stringify({ action, ...extra }),
   });
   if (action === 'csv') return res;
   const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
+  // The server may attach a diagnostic. Show it: this page is internal and behind Access, and
+  // during setup the specific reason is the whole difference between fixable and mysterious.
+  if (!data.ok && data.visibleNames) {
+    return fail(`ADMIN_KEY has not reached this deployment. What it can see: ${data.visibleNames.join(', ') || '(nothing)'}. `
+      + 'If ADMIN_KEY is missing from that list, it was saved on the wrong environment or the variable was never committed. '
+      + 'If it IS in the list, the value is empty. Either way, redeploy after fixing it.');
+  }
   if (!data.ok) fail({
     unauthorized: 'That admin key was rejected.',
     admin_disabled: 'ADMIN_KEY is not set on the server, so the admin API is switched off.',
-    server_not_configured: 'The TESTS KV namespace is not bound to this deployment.',
+    server_not_configured: 'No storage is configured. Set AIRTABLE_TOKEN or bind a KV namespace as TESTS, then redeploy.',
+    store_unavailable: data.detail || 'The store could not be reached.',
   }[data.error] || `Request failed: ${data.error || res.status}`);
   return data;
 }
 
 const fmt = (ms) => (ms ? new Date(ms).toLocaleString() : '—');
 
-function renderRows(rows, origin) {
+function renderRows(rows, base) {
   const body = document.createElement('tbody');
   if (!rows.length) {
     body.innerHTML = '<tr><td class="muted">No candidates yet. Issue a link above.</td></tr>';
   }
   body.insertAdjacentHTML('afterbegin', rows.length ? `<tr>
-    <th>Candidate</th><th>Status</th><th>Progress</th><th>Started</th><th>Answers</th><th></th></tr>` : '');
+    <th>Candidate</th><th>Status</th><th>Progress</th><th>Started</th><th>Answers</th><th></th><th></th></tr>` : '');
   for (const r of rows) {
     const tr = document.createElement('tr');
-    const answers = r.answers.map((a) => `<p><strong>Q${a.index + 1}.</strong> ${esc(a.prompt)}<br>
-      ${esc(a.value) || '<em class="muted">blank</em>'}
-      <span class="muted small">(${Math.round(a.msSpent / 1000)}s${a.pastes ? `, ${a.pastes} paste${a.pastes > 1 ? 's' : ''}` : ''}${a.blurs ? `, ${a.blurs} tab switch${a.blurs > 1 ? 'es' : ''}` : ''})</span></p>`).join('');
     tr.innerHTML = `
       <td><strong>${esc(r.name)}</strong><br><span class="muted small">${esc(r.email || '')}</span></td>
       <td><span class="tag ${r.phase}">${r.phase}${r.ranOut ? ' (ran out)' : ''}</span></td>
       <td>${r.answered} / ${r.total}</td>
       <td class="small">${fmt(r.startedAt)}</td>
-      <td>${answers ? `<details><summary>${r.answered} answer${r.answered === 1 ? '' : 's'}</summary><div class="ans">${answers}</div></details>` : '<span class="muted">—</span>'}</td>
-      <td class="small"><details><summary>link</summary><code>${origin}/?t=${r.token}</code></details></td>`;
+      <td class="ans-cell"></td>
+      <td class="small"><details><summary>link</summary><code>${base}?t=${r.token}</code></details></td>
+      <td class="small reset-cell"></td>`;
+    // Answers are built as nodes, never interpolated into HTML. Candidate text reaches the page
+    // only through textContent, so a formatted answer cannot carry markup into this page.
+    tr.querySelector('.ans-cell').append(answersCell(r));
+    tr.querySelector('.reset-cell').append(resetButton(r));
     body.append(tr);
   }
   $('#table').replaceChildren(body);
+}
+
+/**
+ * Deletes a session, which releases the email claim and is the only way to grant a second
+ * attempt. Needed constantly while the team is trialling this and rarely afterwards, since for a
+ * real candidate "only your first submission counts" is the whole point. It destroys their
+ * answers, so it asks first and names who it is about.
+ */
+function resetButton(r) {
+  const b = document.createElement('button');
+  b.className = 'ghost';
+  b.textContent = 'Reset';
+  b.title = `Delete ${r.name}'s session so they can take the test again`;
+  b.addEventListener('click', async () => {
+    const warning = r.answered
+      ? `Delete ${r.name}'s session? This permanently removes the ${r.answered} answer${r.answered === 1 ? '' : 's'} they submitted, and lets them start again from a fresh clock.`
+      : `Delete ${r.name}'s session? They will be able to start again from a fresh clock.`;
+    if (!confirm(warning)) return;
+    b.disabled = true;
+    b.textContent = 'Resetting…';
+    const res = await admin('delete', { token: r.token });
+    if (res && res.ok) load();
+    else { b.disabled = false; b.textContent = 'Reset'; }
+  });
+  return b;
+}
+
+/** <details> holding one candidate's answers, or an em dash when they have not started. */
+function answersCell(r) {
+  if (!r.answers.length) {
+    const dash = document.createElement('span');
+    dash.className = 'muted';
+    dash.textContent = '—';
+    return dash;
+  }
+
+  const details = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.textContent = `${r.answered} answer${r.answered === 1 ? '' : 's'}`;
+  const wrap = document.createElement('div');
+  wrap.className = 'ans';
+
+  for (const a of r.answers) {
+    const q = document.createElement('p');
+    q.className = 'ans-q';
+    const num = document.createElement('strong');
+    num.textContent = `Q${a.index + 1}. `;
+    q.append(num, document.createTextNode(a.prompt));
+    wrap.append(q);
+
+    const body = document.createElement('div');
+    body.className = 'ans-body';
+    renderAnswer(body, a.value);
+    wrap.append(body);
+
+    const meta = document.createElement('p');
+    meta.className = 'muted small ans-meta';
+    const bits = [`${Math.round(a.msSpent / 1000)}s`];
+    if (a.pastes) bits.push(`${a.pastes} paste${a.pastes > 1 ? 's' : ''}`);
+    if (a.blurs) bits.push(`${a.blurs} tab switch${a.blurs > 1 ? 'es' : ''}`);
+    meta.textContent = `(${bits.join(', ')})`;
+    wrap.append(meta);
+  }
+
+  details.append(summary, wrap);
+  return details;
+}
+
+/** Renders a plain string or a block array. Text always goes in via textContent. */
+function renderAnswer(container, value) {
+  const blank = () => {
+    const em = document.createElement('em');
+    em.className = 'muted';
+    em.textContent = 'blank';
+    container.append(em);
+  };
+
+  if (typeof value === 'string' || value == null) {
+    if (!String(value || '').trim()) return blank();
+    const p = document.createElement('p');
+    p.textContent = value;
+    return container.append(p);
+  }
+  if (!Array.isArray(value) || !value.length) return blank();
+
+  // Consecutive list blocks are gathered into one <ul>/<ol> so a five-point list looks like a
+  // list rather than five stray bullets.
+  let list = null;
+  for (const b of value) {
+    const text = (b.runs || []).map((r) => r.t).join('');
+    const wantList = b.type === 'bullet' ? 'UL' : b.type === 'number' ? 'OL' : null;
+
+    if (!wantList) list = null;
+    else if (!list || list.tagName !== wantList) {
+      list = document.createElement(wantList === 'UL' ? 'ul' : 'ol');
+      container.append(list);
+    }
+
+    const tag = b.type === 'h2' ? 'h4' : b.type === 'h3' ? 'h5' : wantList ? 'li' : 'p';
+    const el = document.createElement(tag);
+    if (!text.trim()) {
+      el.innerHTML = '&nbsp;';
+    } else {
+      for (const run of b.runs || []) {
+        let node = document.createTextNode(run.t);
+        // Wrap outward so all three marks can apply to the same run.
+        for (const [flag, mark] of [['b', 'strong'], ['i', 'em'], ['u', 'u']]) {
+          if (!run[flag]) continue;
+          const w = document.createElement(mark);
+          w.append(node);
+          node = w;
+        }
+        el.append(node);
+      }
+    }
+    (wantList ? list : container).append(el);
+  }
 }
 
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 async function load() {
   const data = await admin('list');
-  if (data.ok) renderRows(data.rows, data.origin);
+  if (data.ok) renderRows(data.rows, data.base);
 }
 
 $('#load').addEventListener('click', load);
+
+/**
+ * `?k=` prefills the admin key and loads straight away, so a link can be handed to someone who
+ * should not have to be told what to paste where.
+ *
+ * Only ever use this with a key you are happy to have in browser history, chat logs, and any
+ * referrer header the page emits: that is fine for a throwaway demo key, and a bad idea for the
+ * key guarding real candidates' answers.
+ */
+(function prefillFromUrl() {
+  const k = new URLSearchParams(location.search).get('k');
+  if (!k) return;
+  $('#key').value = k;
+  // Drop it from the address bar so it is not casually re-shared or bookmarked.
+  history.replaceState(null, '', location.pathname);
+  load();
+})();
 
 $('#create').addEventListener('click', async () => {
   const people = $('#people').value.split('\n').map((line) => {

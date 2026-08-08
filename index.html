@@ -5,10 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow, noarchive">
 <title>2AI Work Task</title>
-<link rel="stylesheet" href="/assets/styles.css">
+<link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
-<main id="app" class="wrap">
+<div class="demo-banner">
+  <strong>Demo.</strong> This is a public preview of 2AI's timed work test, for showing people how it works.
+  Anything you type here is visible to anyone with the link, so use a made-up name and do not enter anything private.
+  It is not a live application and nobody is assessed on it.
+</div><main id="app" class="wrap">
   <p class="muted" id="boot">Loading&hellip;</p>
 </main>
 
@@ -48,12 +52,16 @@
     <h1 data-hook="greeting">Before you start</h1>
     <p>This task is <strong data-hook="duration"></strong> long and has <strong data-hook="count"></strong> questions across two parts. Read this page properly. The clock starts when you press the button at the bottom, and it does not stop.</p>
 
+    <div class="track" data-hook="track" aria-hidden="true"></div>
+    <p class="track-note muted small" data-hook="tracknote"></p>
+
     <ul class="rules">
       <li><strong>You can use AI and a calculator.</strong> We are an AI-forward organization and we would rather see how you work with the tools you actually use. But we will only accept your first submission of this work test.</li>
       <li><strong>If you run low on time, do not try to finish everything.</strong> Instead, explain what other main steps you would take, and leave the rest unfinished. We would much rather read that than a rushed attempt at completeness.</li>
       <li><strong>The clock does not stop or restart.</strong> It runs on our server, so refreshing the page, closing the tab, or opening this on another device will not give you more time.</li>
       <li><strong>You cannot go back.</strong> One question at a time. Once you continue, that answer is final and the next question appears. Do your analysis first, then write your answers.</li>
       <li><strong>Part 1 needs a spreadsheet.</strong> You will be given a link to messy data from the government and our Operations team. Work in your own copy, in another tab, and come back here to write up.</li>
+      <li><strong>You can format your answers.</strong> The answer boxes take headings, subheadings, bold, italic, underline, and lists, so structure a long answer however helps it read. Pasting from a document keeps the formatting we support and drops the rest.</li>
     </ul>
 
     <h2 class="sub">What we are looking for</h2>
@@ -77,7 +85,8 @@
       <span class="progress"><span data-hook="section"></span><span data-hook="progress"></span></span>
       <span class="clock" data-hook="clock" role="timer" aria-live="off">&mdash;</span>
     </header>
-    <div class="track" aria-hidden="true"><div class="track-fill" data-hook="track"></div></div>
+    <div class="track" data-hook="track" aria-hidden="true"></div>
+    <p class="track-note muted small" data-hook="tracknote"></p>
 
     <aside class="brief" data-hook="brief" hidden></aside>
 
@@ -97,9 +106,13 @@
     <h1 data-hook="title">Submitted</h1>
     <p data-hook="body"></p>
     <p class="muted">You can close this tab. There is nothing else to do, and this link will not reopen the task. Our team aims to review submissions within 5 business days, and successful candidates will be invited to a follow-up interview that references this work.</p>
+    <div class="testing-only" data-hook="resetbox" hidden>
+      <p><strong>Internal testing</strong>. This box is only here because <code>ALLOW_SELF_RESET</code> is switched on. Candidates must never see it, so turn that variable off before sending this to anyone outside the team.</p>
+      <button class="ghost-btn" data-hook="reset">Wipe this session and start over</button>
+    </div>
   </section>
 </template>
 
-<script src="/assets/app.js"></script>
+<script src="assets/app.js"></script>
 </body>
 </html>

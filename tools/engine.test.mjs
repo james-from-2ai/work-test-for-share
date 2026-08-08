@@ -8,8 +8,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { handle, createCandidates, listCandidates, config } from '../functions/_lib/engine.js';
-import { DURATION_SEC, GRACE_SEC, QUESTIONS, BRIEFS } from '../functions/_lib/questions.js';
+import { handle, createCandidates, listCandidates, config } from '../functions/_lib/wt-engine.mjs';
+import { DURATION_SEC, GRACE_SEC, QUESTIONS, BRIEFS, SECTIONS } from '../functions/_lib/wt-questions.mjs';
+import { sanitizeRich, richToText, richIsEmpty, MAX_BLOCKS } from '../functions/_lib/wt-rich.mjs';
 
 /** In-memory store with the same three methods as the KV and file-backed ones. */
 function memStore() {
@@ -30,7 +31,12 @@ async function fixture() {
 const T0 = 1_800_000_000_000; // a fixed epoch so tests never depend on the wall clock
 
 /** A valid answer for whatever type question `index` happens to be. */
-const answerFor = (index) => (QUESTIONS[index].type === 'choice' ? 0 : `answer for question ${index + 1}`);
+const answerFor = (index) => {
+  const t = QUESTIONS[index].type;
+  if (t === 'choice') return 0;
+  if (t === 'rich') return [{ type: 'p', runs: [{ t: `answer for question ${index + 1}` }] }];
+  return `answer for question ${index + 1}`;
+};
 
 /** Walks a started candidate through every question. */
 async function answerAll(store, token, startAt = T0) {
@@ -170,9 +176,9 @@ test('finish freezes a running test', async () => {
 test('answers are forward-only: an earlier index is refused', async () => {
   const { store, token } = await fixture();
   await handle(store, { action: 'start', token }, T0);
-  await handle(store, { action: 'answer', token, index: 0, value: 'my first answer' }, T0 + 5_000);
+  await handle(store, { action: 'answer', token, index: 0, value: answerFor(0) }, T0 + 5_000);
 
-  const back = await handle(store, { action: 'answer', token, index: 0, value: 'actually, this instead' }, T0 + 6_000);
+  const back = await handle(store, { action: 'answer', token, index: 0, value: [{ type: 'p', runs: [{ t: 'actually, this instead' }] }] }, T0 + 6_000);
   assert.equal(back.rejected, 'out_of_order');
   assert.equal(back.answered, 1, 'a resubmitted answer changed the record');
   assert.equal(back.question.index, 1, 'the candidate was moved off the current question');
@@ -248,6 +254,150 @@ test('the brief follows the part the candidate is actually on', async () => {
   assert.ok(JSON.stringify(res).includes('Kovar'), 'Part 2 should now include the manager reply');
 });
 
+/* ---------------------------------------------------------------- self reset -------- */
+
+test('self reset is refused by default, so the clock stays unrestartable', async () => {
+  const { store, token } = await fixture();
+  await handle(store, { action: 'start', token }, T0);
+  await handle(store, { action: 'answer', token, index: 0, value: answerFor(0) }, T0 + 1_000);
+
+  const res = await handle(store, { action: 'reset', token }, T0 + 2_000);
+  assert.equal(res.ok, false);
+  assert.equal(res.error, 'reset_disabled');
+
+  const still = await handle(store, { action: 'state', token }, T0 + 3_000);
+  assert.equal(still.answered, 1, 'the session was wiped despite the refusal');
+  assert.equal(still.deadline, T0 + DURATION_SEC * 1000);
+});
+
+test('self reset needs the word "on", but tolerates casing and stray whitespace', () => {
+  assert.equal(config().allowSelfReset, false, 'unset must mean off');
+  // A value meaning anything else leaves it off, so a guess never opens it up.
+  for (const v of ['', 'off', 'false', 'no', 'true', '1', 'yes', 'onn']) {
+    assert.equal(config({ allowSelfReset: v }).allowSelfReset, false, `"${v}" should not enable it`);
+  }
+  // Cloudflare's value box is a textarea, so these are all the same intent typed by a human.
+  for (const v of ['on', 'ON', 'On', ' on', 'on ', 'on\n', ' On \n']) {
+    assert.equal(config({ allowSelfReset: v }).allowSelfReset, true, `"${JSON.stringify(v)}" should enable it`);
+  }
+});
+
+test('closing registration tolerates the same, since a typo there fails open', () => {
+  assert.equal(config().openRegistration, true, 'unset must leave registration open');
+  for (const v of ['off', 'OFF', 'Off', ' off ', 'off\n']) {
+    assert.equal(config({ openRegistration: v }).openRegistration, false, `"${JSON.stringify(v)}" should close it`);
+  }
+});
+
+test('a duration with stray whitespace is still read as a number', () => {
+  assert.equal(config({ durationSec: ' 900 ' }).durationSec, 900);
+  assert.equal(config({ durationSec: 'nonsense' }).durationSec, DURATION_SEC, 'garbage falls back to the default');
+  assert.equal(config({ durationSec: '0' }).durationSec, DURATION_SEC, 'zero would expire everyone instantly');
+  assert.equal(config({ durationSec: '-5' }).durationSec, DURATION_SEC);
+});
+
+test('with the flag on, reset clears the session and frees the email', async () => {
+  const store = memStore();
+  const cfg = config({ allowSelfReset: 'on' });
+  const reg = await handle(store, { action: 'register', name: 'Team Tester', email: 'tester@example.com' }, T0, cfg);
+  await handle(store, { action: 'start', token: reg.token }, T0, cfg);
+  await handle(store, { action: 'answer', token: reg.token, index: 0, value: answerFor(0) }, T0 + 1_000, cfg);
+
+  const res = await handle(store, { action: 'reset', token: reg.token }, T0 + 2_000, cfg);
+  assert.equal(res.ok, true);
+  assert.equal(res.phase, 'anonymous');
+
+  // The old token is gone, and the same email now gets a genuinely fresh clock.
+  const gone = await handle(store, { action: 'state', token: reg.token }, T0 + 3_000, cfg);
+  assert.equal(gone.error, 'invalid_link');
+
+  const again = await handle(store, { action: 'register', name: 'Team Tester', email: 'tester@example.com' }, T0 + 4_000, cfg);
+  assert.notEqual(again.token, reg.token);
+  assert.equal(again.answered, 0);
+  assert.equal(again.phase, 'ready');
+
+  await handle(store, { action: 'start', token: again.token }, T0 + 5_000, cfg);
+  const fresh = await handle(store, { action: 'state', token: again.token }, T0 + 6_000, cfg);
+  assert.equal(fresh.deadline, T0 + 5_000 + DURATION_SEC * 1000, 'the new session did not get a fresh clock');
+});
+
+test('a reset candidate leaves nothing behind in the listing', async () => {
+  const store = memStore();
+  const cfg = config({ allowSelfReset: 'on' });
+  const reg = await handle(store, { action: 'register', name: 'Team Tester', email: 'tester@example.com' }, T0, cfg);
+  await handle(store, { action: 'reset', token: reg.token }, T0 + 1_000, cfg);
+  assert.deepEqual(await listCandidates(store, T0 + 2_000, cfg), []);
+});
+
+test('the client is told whether reset is available', async () => {
+  const { store, token } = await fixture();
+  assert.equal((await handle(store, { action: 'state', token }, T0)).allowSelfReset, false);
+  const on = config({ allowSelfReset: 'on' });
+  assert.equal((await handle(store, { action: 'state', token }, T0, on)).allowSelfReset, true);
+  assert.equal((await handle(store, { action: 'hello' }, T0, on)).allowSelfReset, true);
+});
+
+/* ------------------------------------------------------------------ progress -------- */
+
+test('progress is weighted by effort, not by question count', async () => {
+  const { store, token } = await fixture();
+  await handle(store, { action: 'start', token }, T0);
+
+  const part1 = QUESTIONS.filter((q) => q.section === 'part1').length;
+  let res = await handle(store, { action: 'state', token }, T0);
+  assert.equal(res.progress.percentDone, 0);
+  assert.equal(res.progress.sectionNumber, 1);
+
+  for (let i = 0; i < part1; i++) {
+    res = await handle(store, { action: 'answer', token, index: i, value: answerFor(i) }, T0 + (i + 1) * 1_000);
+  }
+
+  // Part 1 is 60 of the 90 recommended minutes, so finishing it is two thirds of the work even
+  // though it is four of six questions. Counting questions would have said 67% by coincidence
+  // here, so pin the section states too, which is where the two measures actually diverge.
+  assert.equal(res.progress.percentDone, 67);
+  assert.equal(res.progress.sections[0].state, 'done');
+  assert.equal(res.progress.sections[1].state, 'current');
+  assert.equal(res.progress.sectionNumber, 2);
+  assert.equal(res.progress.inSection, 1);
+});
+
+test('one answer into Part 1 is a quarter of Part 1, not a sixth of the task', async () => {
+  const { store, token } = await fixture();
+  await handle(store, { action: 'start', token }, T0);
+  const res = await handle(store, { action: 'answer', token, index: 0, value: answerFor(0) }, T0 + 1_000);
+
+  const p1 = res.progress.sections[0];
+  // 1 of 4 questions in a section worth 60 of 90 minutes: (1/4) * 60 / 90 = 17%.
+  assert.equal(res.progress.percentDone, 17);
+  assert.equal(p1.done, 1);
+  assert.equal(p1.state, 'current');
+  assert.equal(res.progress.inSection, 2, 'the candidate is now on the second question of Part 1');
+});
+
+test('the section shares are whole percentages that describe the split', async () => {
+  const { store, token } = await fixture();
+  const res = await handle(store, { action: 'state', token }, T0);
+  const shares = res.progress.sections.map((s) => s.share);
+  assert.deepEqual(shares, [67, 33]);
+  assert.equal(res.progress.sections.reduce((n, s) => n + s.total, 0), QUESTIONS.length,
+    'every question belongs to exactly one section');
+});
+
+test('the recommended minutes add up to the time actually given', async () => {
+  const total = SECTIONS.reduce((n, s) => n + s.recommendedMin, 0);
+  assert.equal(total * 60, DURATION_SEC,
+    'the progress bar and the clock would tell the candidate different stories');
+});
+
+test('progress is shown before starting, but never a question', async () => {
+  const { store, token } = await fixture();
+  const res = await handle(store, { action: 'state', token }, T0);
+  assert.equal(res.phase, 'ready');
+  assert.ok(res.progress, 'the instructions screen cannot show the shape of the task');
+  assert.equal(res.question, undefined);
+});
+
 /* ----------------------------------------------------------- answer handling -------- */
 
 test('a required question cannot be skipped with an empty answer', async () => {
@@ -271,16 +421,91 @@ test('an optional question accepts a blank answer', async () => {
   assert.equal(res.answered, optionalIndex + 1);
 });
 
-test('long answers are clamped to the question maxLength', async () => {
+/* ------------------------------------------------------- formatted answers ---------- */
+
+test('a formatted answer keeps its headings, marks, and lists', async () => {
   const { store, token } = await fixture();
-  const longIndex = QUESTIONS.findIndex((q) => q.type === 'long' && q.maxLength);
+  const i = QUESTIONS.findIndex((q) => q.type === 'rich');
   await handle(store, { action: 'start', token }, T0);
-  for (let i = 0; i < longIndex; i++) {
+  const value = [
+    { type: 'h2', runs: [{ t: 'Recommendation' }] },
+    { type: 'p', runs: [{ t: 'Enter ' }, { t: 'three', b: 1, u: 1 }, { t: ' states.' }] },
+    { type: 'bullet', runs: [{ t: 'Kwara' }] },
+    { type: 'bullet', runs: [{ t: 'Benue' }] },
+  ];
+  await handle(store, { action: 'answer', token, index: i, value }, T0 + 5_000);
+
+  const rec = await store.get(`c:${token}`);
+  const saved = rec.answers[i].value;
+  assert.equal(rec.answers[i].format, 'rich');
+  assert.equal(saved[0].type, 'h2');
+  assert.deepEqual(saved[1].runs[1], { t: 'three', b: 1, u: 1 });
+  assert.equal(saved.filter((b) => b.type === 'bullet').length, 2);
+  assert.equal(richToText(saved), '## Recommendation\nEnter three states.\n- Kwara\n- Benue');
+});
+
+test('nothing a candidate sends can become markup or an attribute', async () => {
+  // The admin page renders answers, so this is the case that matters most. A candidate posting
+  // directly, not using our editor, still cannot express a tag: only t/b/i/u survive, and t is
+  // rendered with textContent. Everything else on the run and the block is dropped here.
+  const hostile = [
+    { type: 'script', runs: [{ t: 'alert(1)' }] },
+    { type: 'p', tag: 'img', onerror: 'alert(1)', style: 'x', runs: [
+      { t: '<img src=x onerror=alert(1)>', b: 1, href: 'javascript:alert(1)', style: 'color:red', size: 40 },
+    ] },
+  ];
+  const { blocks } = sanitizeRich(hostile, 4000);
+
+  assert.deepEqual(blocks.map((b) => b.type), ['p', 'p'], 'an unknown block type was preserved');
+  for (const b of blocks) {
+    assert.deepEqual(Object.keys(b).sort(), ['runs', 'type'], 'a block kept an extra key');
+    for (const r of b.runs) {
+      assert.ok(Object.keys(r).every((k) => ['t', 'b', 'i', 'u'].includes(k)), `run kept ${Object.keys(r)}`);
+    }
+  }
+  // The angle brackets survive as literal text, which is correct: it is what they typed.
+  assert.equal(richToText(blocks).includes('<img src=x onerror=alert(1)>'), true);
+});
+
+test('formatted answers are clamped to the question maxLength by text length', async () => {
+  const { store, token } = await fixture();
+  const i = QUESTIONS.findIndex((q) => q.type === 'rich' && q.maxLength);
+  await handle(store, { action: 'start', token }, T0);
+  const huge = Array.from({ length: 50 }, () => ({ type: 'p', runs: [{ t: 'x'.repeat(1000) }] }));
+  await handle(store, { action: 'answer', token, index: i, value: huge }, T0 + 5_000);
+
+  const rec = await store.get(`c:${token}`);
+  const chars = rec.answers[i].value.reduce((n, b) => n + b.runs.reduce((m, r) => m + r.t.length, 0), 0);
+  assert.equal(chars, QUESTIONS[i].maxLength);
+});
+
+test('a flood of blocks is capped rather than rejected', () => {
+  const flood = Array.from({ length: MAX_BLOCKS + 500 }, (_, n) => ({ type: 'p', runs: [{ t: `line ${n}` }] }));
+  const { blocks } = sanitizeRich(flood, 1_000_000);
+  assert.equal(blocks.length, MAX_BLOCKS);
+});
+
+test('a formatted answer with only whitespace counts as unanswered', async () => {
+  const { store, token } = await fixture();
+  await handle(store, { action: 'start', token }, T0);
+  const blankish = [{ type: 'h2', runs: [{ t: '   ' }] }, { type: 'p', runs: [] }];
+  assert.equal(richIsEmpty(blankish), true);
+  const res = await handle(store, { action: 'answer', token, index: 0, value: blankish }, T0 + 1_000);
+  assert.equal(res.rejected, 'empty');
+  assert.equal(res.answered, 0);
+});
+
+test('plain text answers still work alongside formatted ones', async () => {
+  const { store, token } = await fixture();
+  const shortIndex = QUESTIONS.findIndex((q) => q.type === 'short');
+  await handle(store, { action: 'start', token }, T0);
+  for (let i = 0; i < shortIndex; i++) {
     await handle(store, { action: 'answer', token, index: i, value: answerFor(i) }, T0 + (i + 1) * 1_000);
   }
-  await handle(store, { action: 'answer', token, index: longIndex, value: 'x'.repeat(50_000) }, T0 + 90_000);
+  await handle(store, { action: 'answer', token, index: shortIndex, value: 'x'.repeat(50_000) }, T0 + 90_000);
   const rec = await store.get(`c:${token}`);
-  assert.equal(rec.answers[longIndex].value.length, QUESTIONS[longIndex].maxLength);
+  assert.equal(rec.answers[shortIndex].format, 'text');
+  assert.equal(rec.answers[shortIndex].value.length, QUESTIONS[shortIndex].maxLength);
 });
 
 test('a multiple-choice answer is resolved from our own options, not the client label', async () => {
@@ -313,11 +538,11 @@ test('self-registered candidates show up in the admin listing', async () => {
   const store = memStore();
   const reg = await handle(store, { action: 'register', name: 'Amina Yusuf', email: 'amina@example.com' }, T0);
   await handle(store, { action: 'start', token: reg.token }, T0);
-  await handle(store, { action: 'answer', token: reg.token, index: 0, value: 'Kwara and two others' }, T0 + 20_000);
+  await handle(store, { action: 'answer', token: reg.token, index: 0, value: [{ type: 'p', runs: [{ t: 'Kwara and two others' }] }] }, T0 + 20_000);
 
   const rows = await listCandidates(store, T0 + 30_000);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].name, 'Amina Yusuf');
   assert.equal(rows[0].phase, 'running');
-  assert.equal(rows[0].answers[0].value, 'Kwara and two others');
+  assert.equal(richToText(rows[0].answers[0].value), 'Kwara and two others');
 });

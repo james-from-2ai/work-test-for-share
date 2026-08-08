@@ -33,6 +33,22 @@
 
 * { box-sizing: border-box; }
 
+/* Public demo banner. Deliberately unmissable: this instance has no password, so anyone landing
+   here has to understand that what they type is readable by anyone else with the link. */
+.demo-banner {
+  padding: 0.7rem 1.25rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  text-align: center;
+  color: #4a2c00;
+  background: #ffe9c2;
+  border-bottom: 1px solid #e0a45c;
+}
+.demo-banner strong { font-weight: 700; }
+@media (prefers-color-scheme: dark) {
+  .demo-banner { color: #ffe0b0; background: #40300f; border-bottom-color: #7a5a1c; }
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -107,8 +123,43 @@ p { margin: 0 0 0.9rem; }
 .clock.warn { color: var(--warn); border-color: currentColor; }
 .clock.danger { color: var(--danger); border-color: currentColor; }
 
-.track { height: 4px; background: var(--line); border-radius: 999px; overflow: hidden; margin-bottom: 1.35rem; }
-.track-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.25s ease; }
+/* Segmented progress. Each segment's width is its share of the recommended time, not an equal
+   slice, so the bar answers "how much is left" rather than "how many questions are left". */
+.track { display: flex; gap: 3px; margin-bottom: 0.5rem; }
+.seg {
+  position: relative;
+  flex-basis: 0;
+  height: 1.45rem;
+  border-radius: 5px;
+  background: var(--line);
+  overflow: hidden;
+}
+.seg-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+.seg-tag {
+  position: relative;
+  display: block;
+  padding: 0 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.45rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.seg.current { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.seg.current .seg-tag, .seg.done .seg-tag { color: var(--ink); }
+/* The finished segment is solid accent, so its label has to flip to read against it. */
+.seg.done .seg-tag { color: var(--accent-ink); }
+
+.track-note { margin: 0 0 1.35rem; line-height: 1.5; }
 
 .context { font-size: 0.92rem; margin-bottom: 1rem; }
 
@@ -198,6 +249,45 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, label:focus-w
 .opt.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 
 .counter { font-size: 0.78rem; color: var(--muted); text-align: right; margin: 0.3rem 0 0; }
+.counter.over { color: var(--danger); font-weight: 600; }
+
+/* --- Formatting editor. Headings inside it are sized down deliberately: an h2 that matches the
+   question's own heading makes the answer look like part of the page furniture. --- */
+.rt-bar {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  padding: 6px; margin-bottom: -1px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px 8px 0 0;
+}
+.rt-btn {
+  font: inherit; font-size: 0.82rem; line-height: 1.1;
+  min-width: 2rem; padding: 0.32rem 0.5rem;
+  color: var(--ink); background: var(--card);
+  border: 1px solid var(--line); border-radius: 5px; cursor: pointer;
+}
+.rt-btn:hover { border-color: var(--accent); color: var(--accent); }
+.rt-btn:active { background: var(--bg); }
+
+.rt-edit {
+  min-height: 12rem; max-height: 60vh; overflow-y: auto;
+  padding: 0.7rem 0.8rem;
+  font: inherit; line-height: 1.55;
+  color: inherit; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 0 0 8px 8px;
+}
+.rt-edit:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none;
+}
+.rt-edit > *:first-child { margin-top: 0; }
+.rt-edit > *:last-child { margin-bottom: 0; }
+.rt-edit h2 { font-size: 1.05rem; font-weight: 700; margin: 1rem 0 0.4rem; }
+.rt-edit h3 { font-size: 0.95rem; font-weight: 700; margin: 0.85rem 0 0.35rem; }
+.rt-edit p { margin: 0 0 0.65rem; }
+.rt-edit ul, .rt-edit ol { margin: 0 0 0.65rem; padding-left: 1.5rem; }
+.rt-edit li { margin-bottom: 0.3rem; }
 
 button.primary {
   font: inherit;
@@ -213,3 +303,28 @@ button.primary:hover { filter: brightness(1.08); }
 button.primary[disabled] { opacity: 0.55; cursor: default; filter: none; }
 
 .err { color: var(--danger); font-size: 0.9rem; margin: 0.6rem 0 0; }
+
+/* Internal testing affordances. Loud on purpose: if this is ever visible to a candidate,
+   somebody should notice immediately rather than it passing for part of the page. */
+.testing-only {
+  margin-top: 1.5rem;
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--warn);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+}
+.testing-only p { font-size: 0.85rem; margin: 0 0 0.7rem; color: var(--ink); }
+.testing-only code { font-size: 0.82rem; }
+.ghost-btn {
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--warn);
+  border-radius: 7px;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+}
+.ghost-btn:hover { background: var(--bg); }
+.ghost-btn[disabled] { opacity: 0.55; cursor: default; }

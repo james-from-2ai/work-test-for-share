@@ -31,6 +31,20 @@ export const GRACE_SEC = 5;
 export const INTEGRITY = { blockPaste: false };
 
 /**
+ * The parts of the task, in order, with how long each is expected to take.
+ *
+ * `recommendedMin` is not decoration. It drives the weighting of the progress bar, so a
+ * candidate can see that Part 1 is two thirds of the work rather than counting questions and
+ * assuming the halfway question is the halfway point. The numbers come from the source task,
+ * which recommends about 60 minutes for Part 1 and about 30 for Part 2, and they should keep
+ * summing to DURATION_SEC so the bar and the clock tell the same story.
+ */
+export const SECTIONS = [
+  { id: 'part1', label: 'Part 1', summary: 'Analyse the data and write up', recommendedMin: 60 },
+  { id: 'part2', label: 'Part 2', summary: 'Reply to your manager', recommendedMin: 30 },
+];
+
+/**
  * Reference material that stays on screen for every question in a part. Block types the
  * client knows how to render: 'p' (paragraph), 'quote' (a Slack or email, with a label),
  * 'list' (numbered points inside a quote), 'link' (a button out to the data).
@@ -75,7 +89,10 @@ export const BRIEFS = {
 /**
  * Question types:
  *   'short'  single-line text
- *   'long'   textarea
+ *   'long'   plain textarea
+ *   'rich'   formatted answer: headings, subheadings, bold, italic, underline, and lists. Stored
+ *            as blocks rather than HTML, so nothing a candidate types can become markup. See
+ *            wt-rich.mjs. maxLength counts text characters only; formatting is free.
  *   'choice' radio buttons, needs options[]
  *
  * Optional per-question fields: brief (key into BRIEFS), required (default true), maxLength,
@@ -84,8 +101,9 @@ export const BRIEFS = {
 export const QUESTIONS = [
   {
     id: 'p1_portfolio',
+    section: 'part1',
     brief: 'part1',
-    type: 'long',
+    type: 'rich',
     prompt: 'Which states do you recommend we enter, and why these?',
     context: 'List the states, then a sentence or two on the rule you used to pick them.',
     maxLength: 1200,
@@ -93,14 +111,16 @@ export const QUESTIONS = [
   },
   {
     id: 'p1_numbers',
+    section: 'part1',
     brief: 'part1',
-    type: 'long',
+    type: 'rich',
     prompt: 'What are the headline numbers for that portfolio?',
     context: 'Total cost, farmers in poverty reached, cost per farmer in poverty reached, and the weighted average poverty rate. Rough is fine, but say what you calculated.',
     maxLength: 900,
   },
   {
     id: 'p1_workings',
+    section: 'part1',
     brief: 'part1',
     type: 'short',
     required: false,
@@ -111,23 +131,26 @@ export const QUESTIONS = [
   },
   {
     id: 'p1_email',
+    section: 'part1',
     brief: 'part1',
-    type: 'long',
+    type: 'rich',
     prompt: 'Write the update email to your manager. Aim for 200 to 400 words.',
     context: 'Cover four things: what you did, what you recommend, what your biggest uncertainties are, and what the next steps are.',
     maxLength: 4000,
   },
   {
     id: 'p2_reply',
+    section: 'part2',
     brief: 'part2',
-    type: 'long',
+    type: 'rich',
     prompt: 'Reply to her email.',
     context: 'Write it as you would actually send it. She has asked three separate things; you do not have to agree with any of them.',
     maxLength: 4000,
   },
   {
     id: 'close',
-    type: 'long',
+    section: 'part2',
+    type: 'rich',
     required: false,
     prompt: 'Anything you want to add?',
     context: 'Optional. If you ran short of time, this is the place to say what you would have done next, and in what order.',
