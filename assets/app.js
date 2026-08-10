@@ -30,6 +30,9 @@ let inFlight = false;
 let signals = { pastes: 0, blurs: 0 }; // reset at the start of each question
 let guarded = false;
 let currentIndex = -1;
+// Mirrors INTEGRITY.blockPaste from the server. Kept at module scope so a paste handler can ask
+// the current answer rather than one captured when its question was built.
+let serverBlockPaste = false;
 
 // Counted for the whole session and attributed to whichever question is open. Candidates are
 // told they may use AI and a spreadsheet, so this is activity data for context, not evidence
@@ -48,6 +51,7 @@ async function api(action, extra = {}) {
   });
   const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
   if (typeof data.serverNow === 'number') clockOffset = data.serverNow - Date.now();
+  if (typeof data.blockPaste === 'boolean') serverBlockPaste = data.blockPaste;
   if (data.token) {
     token = data.token;
     try { localStorage.setItem(STORE_KEY, token); } catch { /* private mode; the email still resumes it */ }
@@ -99,7 +103,11 @@ function guardNavigation() {
   guarded = true;
   history.pushState({ lock: 1 }, '');
   addEventListener('popstate', () => {
-    if (deadline && now() < deadline) history.pushState({ lock: 1 }, '');
+    if (!deadline || now() >= deadline) return;
+    history.pushState({ lock: 1 }, '');
+    // Back used to do nothing, which reads as a broken page. It is also the obvious gesture for
+    // "let me see what I already wrote", so give them exactly that, read-only.
+    openReview();
   });
   addEventListener('beforeunload', (e) => {
     if (deadline && now() < deadline) {
@@ -460,6 +468,183 @@ function serializeEditor(root) {
 
 const richChars = (blocks) => blocks.reduce((n, b) => n + b.runs.reduce((m, r) => m + r.t.length, 0), 0);
 
+/* ------------------------------------------------------------------- review ---------- */
+
+/**
+ * Read-only view of everything already submitted.
+ *
+ * Going back to look is a reasonable thing to want: by Part 2 a candidate is replying to a
+ * manager about numbers they wrote forty minutes earlier, and making them remember exactly what
+ * they said tests memory rather than judgment. Going back to *change* is the thing the whole
+ * design refuses.
+ *
+ * So this is a dialog, not a screen: the question underneath keeps its state, nothing typed is
+ * lost, and there is no control here that can submit. The server enforces the rest, since
+ * `answer` only ever accepts the next index.
+ */
+let reviewOpen = false;
+
+/** Renders a stored answer, plain string or block array, as text nodes only. */
+function renderStoredAnswer(container, value) {
+  if (typeof value === 'string' || value == null) {
+    const p = document.createElement('p');
+    p.textContent = String(value || '').trim() || '(left blank)';
+    if (!String(value || '').trim()) p.className = 'muted';
+    container.append(p);
+    return;
+  }
+  if (!Array.isArray(value) || !value.length) {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = '(left blank)';
+    container.append(p);
+    return;
+  }
+
+  let list = null;
+  for (const b of value) {
+    const wantList = b.type === 'bullet' ? 'ul' : b.type === 'number' ? 'ol' : null;
+    if (!wantList) list = null;
+    else if (!list || list.tagName.toLowerCase() !== wantList) {
+      list = document.createElement(wantList);
+      container.append(list);
+    }
+    const tag = b.type === 'h2' ? 'h3' : b.type === 'h3' ? 'h4' : wantList ? 'li' : 'p';
+    const el = document.createElement(tag);
+    for (const run of b.runs || []) {
+      let node = document.createTextNode(run.t);
+      for (const [flag, mark] of [['b', 'strong'], ['i', 'em'], ['u', 'u']]) {
+        if (!run[flag]) continue;
+        const w = document.createElement(mark);
+        w.append(node);
+        node = w;
+      }
+      el.append(node);
+    }
+    if (!el.childNodes.length) el.innerHTML = '&nbsp;';
+    (wantList ? list : container).append(el);
+  }
+}
+
+async function openReview() {
+  if (reviewOpen) return;
+  reviewOpen = true;
+
+  const dlg = document.createElement('dialog');
+  dlg.className = 'review';
+  dlg.innerHTML = '<p class="muted">Loading your answers&hellip;</p>';
+  document.body.append(dlg);
+  dlg.showModal();
+
+  const close = () => {
+    reviewOpen = false;
+    dlg.close();
+    dlg.remove();
+  };
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
+
+  const res = await api('review');
+  dlg.replaceChildren();
+
+  const head = document.createElement('div');
+  head.className = 'review-head';
+  const h = document.createElement('h2');
+  h.textContent = 'Your answers so far';
+  const note = document.createElement('p');
+  note.className = 'muted small';
+  note.textContent = 'These are final and cannot be changed. This is here so you can check what you already said.';
+  head.append(h, note);
+  dlg.append(head);
+
+  const answers = (res && res.review) || [];
+  if (!answers.length) {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = 'You have not submitted anything yet.';
+    dlg.append(p);
+  }
+  for (const a of answers) {
+    const wrap = document.createElement('section');
+    wrap.className = 'review-item';
+    const q = document.createElement('p');
+    q.className = 'review-q';
+    q.textContent = `Question ${a.number}. ${a.prompt}`;
+    const body = document.createElement('div');
+    body.className = 'review-a';
+    renderStoredAnswer(body, a.value);
+    wrap.append(q, body);
+    dlg.append(wrap);
+  }
+
+  const foot = document.createElement('div');
+  foot.className = 'review-foot';
+  const back = document.createElement('button');
+  back.className = 'primary';
+  back.textContent = 'Back to the question';
+  back.addEventListener('click', close);
+  foot.append(back);
+  dlg.append(foot);
+  back.focus();
+}
+
+/** The button that opens it, shown wherever there is something to look at. */
+function reviewButton(state) {
+  const n = state.answered || 0;
+  if (!n) return null;
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'review-open';
+  b.textContent = `Review your ${n} submitted answer${n === 1 ? '' : 's'}`;
+  b.addEventListener('click', () => openReview());
+  return b;
+}
+
+/* --------------------------------------------------------------- paste blocking ------ */
+
+/**
+ * Whether pasting into an answer is currently refused. Two independent sources, either of which
+ * turns it on: `INTEGRITY.blockPaste` in the questions file, and the internal testing toggle that
+ * the demo site shows in its banner (assets/testing-toggle.js).
+ *
+ * Read at the moment of the paste rather than captured when the question renders, so flipping the
+ * toggle takes effect immediately without reloading or losing what has been typed.
+ *
+ * What this actually achieves, stated plainly so nobody over-reads the results:
+ *
+ *   - It stops casual pasting. The `paste` event fires for Ctrl/Cmd+V, the right-click menu and
+ *     middle-click, so all three are covered, and `drop` covers dragging text in.
+ *   - It CANNOT tell where the clipboard came from. A candidate pasting their own figures back
+ *     from the spreadsheet Part 1 sends them to build is blocked exactly like anything else.
+ *   - It is trivially defeated by devtools, by turning off JavaScript, or by retyping from a
+ *     second screen. Treat it as friction, never as proof that an answer was written here.
+ */
+const PASTE_TOGGLE_KEY = 'work-test-block-paste';
+
+function pasteBlocked() {
+  if (serverBlockPaste) return true;
+  try {
+    return localStorage.getItem(PASTE_TOGGLE_KEY) === 'on';
+  } catch {
+    return false; // private mode, or storage disabled
+  }
+}
+
+/** Wires refusal onto one editable element. Always records the attempt, blocked or not. */
+function guardPaste(el, onBlocked) {
+  el.addEventListener('paste', (e) => {
+    signals.pastes += 1;
+    if (!pasteBlocked()) return;
+    e.preventDefault();
+    onBlocked();
+  });
+  // Dragging text in is the same act by another route.
+  el.addEventListener('drop', (e) => {
+    if (!pasteBlocked()) return;
+    e.preventDefault();
+    onBlocked();
+  });
+}
+
 /** True for an unanswered question, whatever the answer's shape. Mirrors richIsEmpty server-side. */
 const isBlank = (v) => v === null || v === '' || typeof v === 'undefined'
   || (Array.isArray(v) && !v.some((b) => b.runs.some((r) => r.t.trim() !== '')));
@@ -512,7 +697,12 @@ function richEditor(q, field, onInput) {
   try { document.execCommand('styleWithCSS', false, false); } catch { /* not supported, fine */ }
 
   editor.addEventListener('input', onInput);
-  editor.addEventListener('paste', () => { signals.pastes += 1; setTimeout(onInput, 0); });
+  guardPaste(editor, () => {
+    showError('Pasting is switched off for this exercise. Please type your answer.');
+    setTimeout(() => showError(''), 4000);
+  });
+  // A permitted paste still needs the counter and the serializer to catch up with the new content.
+  editor.addEventListener('paste', () => setTimeout(onInput, 0));
   editor.focus();
 
   return { read: () => serializeEditor(editor), editor };
@@ -542,6 +732,10 @@ function renderQuestion(state) {
   const field = hook('field');
   const next = hook('next');
   next.textContent = q.number === q.total ? 'Submit final answer' : 'Lock in and continue';
+
+  // Looking back is allowed; changing is not. The dialog leaves this question untouched.
+  const review = reviewButton(state);
+  if (review) next.parentNode.insertBefore(review, next);
 
   let read; // returns what we send as `value`
 
@@ -616,7 +810,10 @@ function renderQuestion(state) {
     input.addEventListener('input', paint);
     field.append(counter);
 
-    input.addEventListener('paste', () => { signals.pastes += 1; });
+    guardPaste(input, () => {
+      showError('Pasting is switched off for this exercise. Please type your answer.');
+      setTimeout(() => showError(''), 4000);
+    });
 
     input.focus();
     read = () => input.value.trim();
@@ -662,6 +859,10 @@ function renderDone(state) {
     hook('title').textContent = 'Thank you, that is submitted';
     hook('body').textContent = `All ${n} answers are recorded against your name and email.`;
   }
+
+  // Reading back what they submitted is still allowed once the task has closed.
+  const review = reviewButton(state);
+  if (review) hook('body').after(review);
 
   // Only ever shown when the server says ALLOW_SELF_RESET is on, and the server refuses the
   // action regardless of what this page renders. Hiding a button is not a security control.

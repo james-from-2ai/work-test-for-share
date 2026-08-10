@@ -254,6 +254,73 @@ test('the brief follows the part the candidate is actually on', async () => {
   assert.ok(JSON.stringify(res).includes('Kovar'), 'Part 2 should now include the manager reply');
 });
 
+/* -------------------------------------------------------------------- review -------- */
+
+test('review returns what was submitted, and only what was submitted', async () => {
+  const { store, token } = await fixture();
+  await handle(store, { action: 'start', token }, T0);
+  await handle(store, { action: 'answer', token, index: 0, value: answerFor(0) }, T0 + 1_000);
+  await handle(store, { action: 'answer', token, index: 1, value: answerFor(1) }, T0 + 2_000);
+
+  const res = await handle(store, { action: 'review', token }, T0 + 3_000);
+  assert.equal(res.ok, true);
+  assert.equal(res.review.length, 2);
+  assert.deepEqual(res.review.map((r) => r.number), [1, 2]);
+  assert.equal(res.review[0].prompt, QUESTIONS[0].prompt);
+  assert.equal(richToText(res.review[0].value), 'answer for question 1');
+});
+
+test('review cannot reveal a question the candidate has not reached', async () => {
+  const { store, token } = await fixture();
+  await handle(store, { action: 'start', token }, T0);
+  await handle(store, { action: 'answer', token, index: 0, value: answerFor(0) }, T0 + 1_000);
+
+  const res = await handle(store, { action: 'review', token }, T0 + 2_000);
+  const wire = JSON.stringify(res.review);
+  const onWire = (s) => wire.includes(JSON.stringify(s).slice(1, -1));
+  // Question 2 is the one they are on now, so its prompt is legitimately in `question`, but it
+  // must not be in the review payload, and nothing beyond it may appear at all.
+  for (const q of QUESTIONS.slice(1)) {
+    assert.ok(!onWire(q.prompt), `an unanswered question leaked into review: ${q.id}`);
+  }
+  for (const block of BRIEFS.part2.blocks) {
+    for (const item of block.list || []) assert.ok(!onWire(item), 'Part 2 leaked into review');
+  }
+});
+
+test('reviewing does not let an answer be changed', async () => {
+  const { store, token } = await fixture();
+  await handle(store, { action: 'start', token }, T0);
+  await handle(store, { action: 'answer', token, index: 0, value: answerFor(0) }, T0 + 1_000);
+  await handle(store, { action: 'review', token }, T0 + 2_000);
+
+  // The obvious follow-up attempt: read it back, then try to send a better version.
+  const retry = await handle(store, { action: 'answer', token, index: 0, value: 'a better answer' }, T0 + 3_000);
+  assert.equal(retry.rejected, 'out_of_order');
+
+  const after = await handle(store, { action: 'review', token }, T0 + 4_000);
+  assert.equal(after.review.length, 1);
+  assert.equal(richToText(after.review[0].value), 'answer for question 1', 'the stored answer changed');
+});
+
+test('review still works once the task is finished or expired', async () => {
+  const { store, token } = await fixture();
+  await handle(store, { action: 'start', token }, T0);
+  await answerAll(store, token);
+
+  const done = await handle(store, { action: 'review', token }, T0 + 60_000);
+  assert.equal(done.phase, 'done');
+  assert.equal(done.review.length, QUESTIONS.length);
+  assert.equal(done.question, undefined, 'a finished candidate was shown a question again');
+});
+
+test('review on an untouched session is empty rather than an error', async () => {
+  const { store, token } = await fixture();
+  const res = await handle(store, { action: 'review', token }, T0);
+  assert.equal(res.ok, true);
+  assert.deepEqual(res.review, []);
+});
+
 /* ---------------------------------------------------------------- self reset -------- */
 
 test('self reset is refused by default, so the clock stays unrestartable', async () => {

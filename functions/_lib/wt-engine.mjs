@@ -272,6 +272,22 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       return view(rec, now, cfg);
     }
 
+    case 'review': {
+      // Everything already submitted, to look at and nothing more. There is deliberately no way
+      // to feed any of this back in: `answer` still accepts only index === answers.length, so
+      // reading an old answer cannot become editing it. Only questions actually reached appear
+      // here, so this can never reveal one the candidate has not seen.
+      return view(rec, now, cfg, {
+        review: rec.answers.map((a) => ({
+          number: a.index + 1,
+          prompt: a.prompt,
+          value: a.value,
+          format: a.format || 'text',
+          msSpent: a.msSpent,
+        })),
+      });
+    }
+
     case 'reset': {
       // Internal testing only. Deliberately a full delete rather than a rewind: it also releases
       // the email claim, so the tester can register again from scratch, and it leaves no
