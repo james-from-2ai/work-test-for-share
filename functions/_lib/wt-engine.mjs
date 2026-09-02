@@ -32,7 +32,9 @@
  * recorded as signals in the export, not blocked. Treat the result as evidence, not proof.
  */
 
-import { QUESTIONS, BRIEFS, SECTIONS, DURATION_SEC, GRACE_SEC, INTEGRITY } from './wt-questions.mjs';
+import {
+  QUESTIONS, BRIEFS, SECTIONS, DURATION_SEC, GRACE_SEC, INTEGRITY, TIMING, NAVIGATION,
+} from './wt-questions.mjs';
 import { sanitizeRich, richIsEmpty, richToText, richWordCount } from './wt-rich.mjs';
 import {
   currentQuestionId, questionById, firstQuestionId, optionLabels,
@@ -87,12 +89,12 @@ export function config(overrides = {}) {
       ? overrides.sections
       : SECTIONS,
     briefs: overrides.briefs && typeof overrides.briefs === 'object' ? overrides.briefs : BRIEFS,
-    timing: normalizeTiming(overrides, sectionList(overrides)),
+    timing: normalizeTiming({ timing: TIMING, ...overrides }, sectionList(overrides)),
     // Both default to false, so a spec that says nothing behaves exactly as every earlier one
     // did. Neither is a UI preference: see the note at the top of this file.
     navigation: {
-      back: overrides.navigation ? overrides.navigation.back === true : false,
-      edit: overrides.navigation ? overrides.navigation.edit === true : false,
+      back: (overrides.navigation || NAVIGATION).back === true,
+      edit: (overrides.navigation || NAVIGATION).edit === true,
     },
     integrity: {
       blockPaste: overrides.integrity

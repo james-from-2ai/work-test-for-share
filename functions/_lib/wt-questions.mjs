@@ -31,6 +31,15 @@ export const GRACE_SEC = 5;
 export const INTEGRITY = { blockPaste: false };
 
 /**
+ * How the clock works, and whether a candidate can go back. Both are read by wt-engine.mjs
+ * through `config()`, and both default to what this engine has always done: one clock for the
+ * whole sitting, and no going back. See the header of wt-engine.mjs for why the second of those
+ * is a decision about what the test measures rather than a presentation choice.
+ */
+export const TIMING = { mode: 'total' };
+export const NAVIGATION = { back: false, edit: false };
+
+/**
  * The parts of the task, in order, with how long each is expected to take.
  *
  * `recommendedMin` is not decoration. It drives the weighting of the progress bar, so a

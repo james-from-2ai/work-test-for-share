@@ -339,6 +339,13 @@ button.primary[disabled] { opacity: 0.55; cursor: default; filter: none; }
 
 .err { color: var(--danger); font-size: 0.9rem; margin: 0.6rem 0 0; }
 
+.looking-back {
+  font-size: 0.85rem; padding: 0.5rem 0.7rem; margin: 0 0 0.9rem;
+  border-radius: 6px; border: 1px solid var(--warn); color: var(--warn);
+  background: rgba(154, 91, 18, 0.07);
+}
+.nav-btn { margin-right: 0.4rem; }
+
 /* --- Upload questions. The file is sent when it is chosen, so the status line is the only
    feedback a candidate gets that it worked; it is deliberately wordy about what happens next. */
 .upload { display: block; }

@@ -128,7 +128,20 @@ export const GRACE_SEC = ${Number.isFinite(spec.graceSec) ? spec.graceSec : 5};
  * genuinely informative about prioritization. blockPaste stays false: it would break the
  * "you may use AI" promise.
  */
-export const INTEGRITY = { blockPaste: ${spec.blockPaste === true} };
+export const INTEGRITY = { blockPaste: ${(spec.integrity && spec.integrity.blockPaste) === true || spec.blockPaste === true} };
+
+/**
+ * How the clock works. 'total' is one countdown for the sitting, 'section' gives each part its
+ * own limit and moves the candidate on when one runs out, 'none' is untimed.
+ */
+export const TIMING = ${lit(spec.timing || { mode: 'total' })};
+
+/**
+ * Whether a candidate may look back at earlier answers, and whether they may change them.
+ * Both default to false. Turning \`edit\` on changes what the test measures rather than only how
+ * it feels, and a revision that changes a branch discards the answers that followed it.
+ */
+export const NAVIGATION = ${lit(spec.navigation || { back: false, edit: false })};
 
 /**
  * The parts of the task, in order, with how long each is expected to take. \`recommendedMin\`

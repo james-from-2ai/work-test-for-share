@@ -13,7 +13,9 @@
  */
 
 import { writeFileSync } from 'node:fs';
-import { QUESTIONS, SECTIONS, BRIEFS, DURATION_SEC, GRACE_SEC, INTEGRITY } from '../functions/_lib/wt-questions.mjs';
+import {
+  QUESTIONS, SECTIONS, BRIEFS, DURATION_SEC, GRACE_SEC, INTEGRITY, TIMING, NAVIGATION,
+} from '../functions/_lib/wt-questions.mjs';
 
 const arg = (name) => {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -23,7 +25,9 @@ const arg = (name) => {
 const json = JSON.stringify({
   durationSec: DURATION_SEC,
   graceSec: GRACE_SEC,
-  blockPaste: INTEGRITY.blockPaste,
+  timing: TIMING,
+  navigation: NAVIGATION,
+  integrity: { blockPaste: INTEGRITY.blockPaste },
   // Not recoverable from the module, since a comment is not a value. Whoever exports an existing
   // file should paste the provenance from its header in here before applying it back, or the
   // regeneration will drop it.

@@ -793,15 +793,18 @@ function fileToBase64(file) {
 const kb = (bytes) => `${Math.max(1, Math.round(bytes / 1000))} KB`;
 
 /**
- * An upload question: choose a file, then name it.
+ * The file half of an answer. Any question can carry one now, so this sits alongside whatever
+ * field the question's type produces rather than replacing it.
  *
  * The file is sent the moment it is chosen rather than when the answer is submitted. An upload
  * takes time and the grace window after the deadline is only a few seconds, so attaching a file
  * near the buzzer must not be the thing that loses it. By the time the candidate presses
- * continue, the file is already stored and all that travels is the name they gave it.
+ * continue the file is already stored, and all that travels with the answer is the text.
+ *
+ * Returns `{ has }` so the caller can fold the file into whatever the question requires.
  */
-function uploadField(q, state, field, next) {
-  let attached = state.upload || null;
+function attachmentField(q, state, field, next) {
+  let attached = state.upload || (state.given && state.given.upload) || null;
 
   const box = document.createElement('div');
   box.className = 'upload';
@@ -813,15 +816,6 @@ function uploadField(q, state, field, next) {
 
   const status = document.createElement('p');
   status.className = 'muted small upload-status';
-
-  const nameLabel = document.createElement('label');
-  nameLabel.className = 'lbl';
-  nameLabel.textContent = 'What is this file? Give it a short name.';
-  const nameInput = document.createElement('input');
-  nameInput.type = 'text';
-  nameInput.maxLength = q.maxLength || 120;
-  nameInput.placeholder = q.placeholder || 'e.g. Portfolio model, final version';
-  nameInput.autocomplete = 'off';
 
   const paint = () => {
     status.textContent = attached
@@ -871,31 +865,35 @@ function uploadField(q, state, field, next) {
     }
     attached = res.uploaded;
     paint();
-    if (!nameInput.value.trim()) nameInput.focus();
   });
 
-  box.append(file, status, nameLabel, nameInput);
+  box.append(file, status);
   field.append(box);
   paint();
-  file.focus();
 
-  return {
-    read: () => nameInput.value.trim(),
-    extraCheck: () => {
-      if (q.required !== false && !attached) return 'Choose a file before continuing.';
-      if (attached && !nameInput.value.trim()) return 'Give the file a short name so we know what it is.';
-      return null;
-    },
-  };
+  return { has: () => !!attached };
+}
+
+/** What a question insists on, said the way a candidate would want to hear it. */
+function requirementNote(q) {
+  if (q.require === 'either') return 'Answer in writing or attach a file, whichever suits. One is enough.';
+  if (q.require === 'both') return 'Both a file and a short written answer are needed here.';
+  if (q.require === 'file') return 'A file is needed here.';
+  if (q.require === 'optional') return 'This one is optional. You can continue without answering.';
+  return null;
 }
 
 function renderQuestion(state) {
   const q = state.question;
-  deadline = state.deadline;
+  deadline = state.deadline || null;
   currentIndex = q.index;
   currentQid = q.id;
   signals = { pastes: 0, blurs: 0 };
   screen('question');
+
+  // Looking at something already submitted, rather than at the newest question.
+  const past = state.given || null;
+  const canEdit = past ? !!state.editable : true;
 
   const p = state.progress;
   hook('section').textContent = p ? `${p.sections[p.sectionNumber - 1].label} of ${p.sectionTotal} · ` : '';
@@ -918,17 +916,27 @@ function renderQuestion(state) {
   const next = hook('next');
   // isLast comes from the server, which is the only thing that knows whether every route out of
   // this question ends here. Comparing a number against a total cannot answer that any more.
-  const nextLabel = q.isLast ? 'Submit final answer' : 'Lock in and continue';
+  const nextLabel = past
+    ? (canEdit ? 'Save this change' : 'Back to where I was')
+    : q.isLast ? 'Submit final answer' : 'Lock in and continue';
   next.textContent = nextLabel;
 
-  // Looking back is allowed; changing is not. The dialog leaves this question untouched.
+  // Looking back is allowed; changing is not, unless the test says so. The dialog leaves this
+  // question untouched either way.
   const review = reviewButton(state);
   if (review) next.parentNode.insertBefore(review, next);
 
+  if (state.navigation && state.navigation.back) navButtons(state, next);
+  if (past) {
+    const banner = document.createElement('p');
+    banner.className = 'looking-back';
+    banner.textContent = canEdit
+      ? 'You are looking at an answer you already submitted. Changing it here replaces it.'
+      : 'You are looking at an answer you already submitted. It cannot be changed.';
+    field.parentNode.insertBefore(banner, field);
+  }
+
   let read; // returns what we send as `value`
-  // Some questions refuse to continue for a reason `isBlank` cannot express, such as an upload
-  // question whose file has not been chosen. Returns a message, or null when it is happy.
-  let extraCheck = null;
 
   if (q.type === 'rich') {
     const counter = document.createElement('p');
@@ -980,13 +988,18 @@ function renderQuestion(state) {
     };
     const firstOpt = list.querySelector('input');
     if (firstOpt) firstOpt.focus();
-  } else if (q.type === 'upload') {
-    ({ read, extraCheck } = uploadField(q, state, field, next));
   } else {
+    if (q.type === 'upload') {
+      const lbl = document.createElement('label');
+      lbl.className = 'lbl';
+      lbl.textContent = 'What is this file? Give it a short name.';
+      field.append(lbl);
+    }
     const input = document.createElement(q.type === 'long' ? 'textarea' : 'input');
     if (q.type !== 'long') input.type = 'text';
     input.maxLength = q.maxLength;
     if (q.placeholder) input.placeholder = q.placeholder;
+    if (q.type === 'upload' && !q.placeholder) input.placeholder = 'e.g. Portfolio model, final version';
     input.autocomplete = 'off';
     input.spellcheck = true;
     field.append(input);
@@ -1012,19 +1025,46 @@ function renderQuestion(state) {
     read = () => input.value.trim();
   }
 
-  if (!q.required) {
-    const opt = document.createElement('p');
-    opt.className = 'muted small';
-    opt.textContent = 'This one is optional. You can continue without answering.';
-    field.append(opt);
+  // Any question can take a file, so the widget is appended after whatever field its type made.
+  let attachment = null;
+  if (q.attachment && q.attachment !== 'none') attachment = attachmentField(q, state, field, next);
+
+  const note = requirementNote(q);
+  if (note) {
+    const p2 = document.createElement('p');
+    p2.className = 'muted small';
+    p2.textContent = note;
+    field.append(p2);
   }
 
-  next.addEventListener('click', async () => {
+  // One gate over both halves of an answer, because 'either' cannot be expressed as two
+  // independent checks: neither is required alone, but leaving both empty is not an answer.
+  const requirementCheck = () => {
+    const hasFile = attachment ? attachment.has() : false;
+    const hasText = !isBlank(read());
+    switch (q.require) {
+      case 'file': return hasFile ? null : 'Attach a file before continuing.';
+      case 'both': return !hasFile ? 'Attach a file before continuing.'
+        : !hasText ? 'Add a short written answer as well.' : null;
+      case 'either': return hasFile || hasText
+        ? null
+        : 'Write an answer or attach a file. Either one is enough.';
+      case 'optional': return null;
+      default: return hasText ? null : null; // plain text is handled by the blank check below
+    }
+  };
+
+  const submit = async (confirmDiscard = false) => {
     if (inFlight) return;
+
+    // Looking at an old answer on a test that does not allow editing: the button is just a way
+    // back to where they were, so it must not try to submit anything.
+    if (past && !canEdit) return render(await api('forward'));
+
     const value = read();
-    const blocked = extraCheck && extraCheck();
+    const blocked = requirementCheck();
     if (blocked) return showError(blocked);
-    if (q.required && isBlank(value)) {
+    if (q.require === undefined && q.required && isBlank(value)) {
       showError(q.type === 'choice'
         ? 'Choose one option to continue.'
         : 'Write something to continue. You cannot come back to this question, so if you are short of time, say what you would have done instead.');
@@ -1033,8 +1073,11 @@ function renderQuestion(state) {
     inFlight = true;
     next.disabled = true;
     next.textContent = 'Saving…';
-    const res = await api('answer', { index: q.index, questionId: q.id, value, ...signals });
+    const res = await api('answer', {
+      index: q.index, questionId: q.id, value, confirmDiscard, ...signals,
+    });
     inFlight = false;
+
     if (isTransient(res)) {
       // The server recorded nothing and the editor still holds every word of the answer, so the
       // whole recovery is to put the button back and let them press it again. Re-rendering would
@@ -1044,10 +1087,81 @@ function renderQuestion(state) {
       showError(res.detail || RETRY_MSG);
       return;
     }
-    render(res);
-  });
 
+    // Changing this answer sends them down a different branch, so what they wrote after it no
+    // longer belongs to any question they will be asked. The server refuses once and says how
+    // much is at stake; nothing is destroyed until this is answered.
+    if (res.rejected === 'would_discard') {
+      next.disabled = false;
+      next.textContent = nextLabel;
+      const n = res.wouldDiscard;
+      const ok = confirm(`Changing this answer sends you down a different path, so the ${n} answer${n === 1 ? '' : 's'} you gave after it will be deleted. Continue?`);
+      if (ok) return submit(true);
+      return showError('Left as it was. Nothing was deleted.');
+    }
+    render(res);
+  };
+
+  next.addEventListener('click', () => submit(false));
+
+  if (past) prefill(q, past, field, canEdit);
   startClock(read);
+}
+
+/**
+ * Puts a submitted answer back on screen. Read-only unless the test allows editing, in which
+ * case the fields stay live and saving replaces the answer.
+ */
+function prefill(q, given, field, canEdit) {
+  if (q.type === 'choice') {
+    const inputs = field.querySelectorAll('.opt input');
+    if (Number.isInteger(given.choiceIndex) && inputs[given.choiceIndex]) {
+      inputs[given.choiceIndex].checked = true;
+      inputs[given.choiceIndex].closest('.opt').classList.add('sel');
+    }
+  } else if (q.type === 'rich') {
+    const editor = field.querySelector('.rt-edit');
+    if (editor) {
+      editor.replaceChildren();
+      renderStoredAnswer(editor, given.value);
+    }
+  } else {
+    const input = field.querySelector('input[type=text], textarea');
+    if (input) input.value = typeof given.value === 'string' ? given.value : '';
+  }
+
+  if (canEdit) return;
+  for (const el of field.querySelectorAll('input, textarea, button, [contenteditable]')) {
+    el.setAttribute('disabled', '');
+    if (el.hasAttribute('contenteditable')) el.setAttribute('contenteditable', 'false');
+  }
+}
+
+/**
+ * Back and forward, shown only when the test allows looking at earlier answers. Moving between
+ * questions this way changes nothing: the server treats it as a cursor and the frontier is
+ * exactly where it was.
+ */
+function navButtons(state, next) {
+  const bar = next.parentNode;
+  const move = (action, label, enabled) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ghost-btn nav-btn';
+    b.textContent = label;
+    b.disabled = !enabled;
+    b.addEventListener('click', async () => {
+      if (inFlight) return;
+      inFlight = true;
+      const res = await api(action);
+      inFlight = false;
+      if (isTransient(res)) return showError(res.detail || RETRY_MSG);
+      render(res);
+    });
+    bar.insertBefore(b, next);
+  };
+  move('back', '\u2190 Previous', !!state.canGoBack);
+  if (state.canGoForward) move('forward', 'Next \u2192', true);
 }
 
 function renderDone(state) {
@@ -1110,6 +1224,14 @@ function startClock(getDraft) {
   stopClock();
   const el = hook('clock');
   let ended = false;
+
+  // An untimed test draws no clock at all. Showing a dash where a countdown belongs invites the
+  // question "is it broken", so the element goes rather than sits there empty.
+  if (!deadline) {
+    if (el) el.hidden = true;
+    return;
+  }
+  if (el) el.hidden = false;
 
   const tick = async () => {
     if (!deadline) return;

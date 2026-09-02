@@ -72,6 +72,34 @@ The three differences to reapply, all deliberate:
 3. `index.html` and `admin.html` carry the demo banner, and the test imports are one level
    shallower.
 
+## What a test can be set to do
+
+Six things, all set in the builder, all defaulting to what this engine has always done so a spec
+that says nothing behaves exactly as every earlier one did.
+
+| Setting | Options | Default |
+| --- | --- | --- |
+| **Time** | one clock for the whole test, a clock per part, or untimed | one clock |
+| **Going back** | not at all, look but not change, or go back and change | not at all |
+| **Pasting** | allowed or blocked, per test or per question | allowed |
+| **What they submit** | writing, a file, either one, both, or nothing | writing |
+| **File types** | PDF, Word, or both | both |
+| **Branching** | any multiple choice can send each option somewhere different | none |
+
+Two of these deserve more than a table row.
+
+**A clock per part does not end the sitting.** When a part's time runs out, its unanswered
+questions are recorded as *not reached* and the candidate moves into the next part on a fresh
+clock. That is the point of per-part limits: to stop one part eating another, not to end the
+sitting early. A part with no limit set is untimed, so set all of them or use one clock.
+
+**Letting candidates change their answers changes what the test measures.** Forward-only asks
+what their judgment is with what they have in front of them; revisable asks something else. It is
+not a presentation choice, which is why the builder says so on the card rather than in a tooltip.
+If a revision changes a branch, the answers after it are discarded, because they belong to a route
+the candidate is no longer on. The server refuses once and says how many, and destroys nothing
+until told to.
+
 ## Writing a test without touching code
 
 `/builder.html` is the authoring tool. Someone who does not write code can build a whole test in
@@ -148,7 +176,9 @@ node tools/dev-server.mjs --duration=120
 ```
 
 Then `http://localhost:8788/`, admin at `/admin.html` with key `dev`, builder at `/builder.html`.
-Add `--port=8899` if that port is busy, and `--spec=file.json` to run a draft. Uploads are written
+Add `--port=8899` if that port is busy, and `--spec=file.json` to run a draft. Two examples ship
+with the repo: `tools/evp-demo-spec.json` is the gated two-part shape with three Part 2 variants
+and a closing question about AI use, and `tools/example-branching-spec.json` is a smaller one. Uploads are written
 to `tools/.dev-uploads/`, which is gitignored. Tests:
 
 ```bash
