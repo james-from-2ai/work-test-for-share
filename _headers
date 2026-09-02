@@ -5,7 +5,15 @@
 # would be a problem for the test itself: the questions are meant to be unseen before a candidate
 # opens them.
 
+# The CSP is worth having precisely because this deployment is public. Everything the pages need
+# is served from this origin, so `default-src 'none'` with a short allowlist costs nothing and
+# takes third-party script injection and form exfiltration off the table. 'unsafe-inline' is
+# required by the inline <script> and <style> in admin.html and by the inline style attributes
+# app.js sets on the progress bar; it is not load-bearing anywhere else. The one external
+# destination, the Google Sheet in the brief, is an ordinary link and is unaffected.
+
 /*
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow, noarchive
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY

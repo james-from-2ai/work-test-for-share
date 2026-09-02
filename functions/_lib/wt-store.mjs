@@ -8,9 +8,10 @@
  * ever becomes a problem during a live sitting.
  *
  * Airtable needs, in the Pages project settings:
- *   AIRTABLE_TOKEN     - REQUIRED, Secret. The same token the tech request form uses. It must
- *                        have data.records:read and data.records:write on the base below.
- *                        `AirtablePAT` is accepted too, matching functions/api/request.js.
+ *   AIRTABLE_TOKEN     - REQUIRED, Secret. The same token the internal site's tech request form
+ *                        uses. It must have data.records:read and data.records:write on the base
+ *                        below. `AirtablePAT` is accepted too, which is the name that form uses
+ *                        in master-mega-badass-site; there is no such form in this repo.
  *   AIRTABLE_WT_BASE   - optional, defaults to the base holding Tech Requests.
  *   AIRTABLE_WT_TABLE  - optional, defaults to the Work Test Sessions table in that base.
  *

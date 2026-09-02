@@ -1,8 +1,9 @@
 /**
  * Cloudflare Pages Function: POST /api/work-test
  *
- * The candidate-facing endpoint for the timed work test at /work-test/. Actions: hello, register,
- * state, start, answer, finish. Every rule that matters lives in `functions/_lib/wt-engine.mjs`;
+ * The candidate-facing endpoint for the timed work test, served at the site root in this copy.
+ * Actions: hello, register, state, start, answer, review, reset, finish. Every rule that matters
+ * lives in `functions/_lib/wt-engine.mjs`;
  * this file only picks the store and shapes the HTTP response.
  *
  * Storage: Airtable when `AIRTABLE_TOKEN` is set, otherwise a KV namespace bound as `TESTS`. See
@@ -14,7 +15,7 @@
  *   DURATION_SEC      - overrides the duration set in _lib/wt-questions.mjs. Handy for a short
  *                       rehearsal on Preview without touching code.
  *   OPEN_REGISTRATION - set to `off` to stop accepting self-registration, so only links issued
- *                       from /work-test/admin.html work.
+ *                       from /admin.html work.
  *   ALLOW_SELF_RESET  - set to `on` to let whoever is on the page wipe their own session and
  *                       start again. INTERNAL TESTING ONLY: it makes the clock restartable by
  *                       anyone with the link, which is the one thing this whole thing exists to
@@ -23,9 +24,11 @@
  * Variables are per-environment and Pages does not apply changes to deployments that already
  * exist, so redeploy after setting them.
  *
- * While this site sits behind Cloudflare Access, only @aiaccessinitiative.org accounts can reach
- * this at all, so the test is internal-only. External candidates cannot use it until it moves out
- * from behind the gate. See the work test section of CLAUDE.md.
+ * This copy is the PUBLIC demo. There is no Cloudflare Access in front of it, so anyone holding
+ * the URL can register and sit the test. That is the point of this repo, and it is why
+ * wt-store.mjs defaults to the demo Airtable table rather than the real one. Do not carry any
+ * assumption about that gate over from the internal copy in master-mega-badass-site: here, this
+ * endpoint is on the open internet. See README.md.
  */
 
 import { handle, config } from '../_lib/wt-engine.mjs';

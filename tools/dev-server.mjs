@@ -11,15 +11,22 @@
  * everything. It is the one place the "you cannot restart the timer" rule can be bypassed,
  * which is exactly why it exists only here and never in production.
  *
+ * `--spec=path.json` runs a draft test instead of the compiled one, which is how a test written
+ * in the builder gets tried for real: same engine, same clock, same forward-only rules, just a
+ * different set of questions. The file holds { durationSec?, sections, briefs, questions }.
+ * Nothing in production can do this; the deployed test is always the compiled one.
+ *
  * This serves the repo root so the /api/* paths match production.
  */
 
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { handle, config, createCandidates, listCandidates, deleteCandidate, toCsv } from '../functions/_lib/wt-engine.mjs';
+import { validateFlow } from '../functions/_lib/wt-flow.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const STORE = join(ROOT, 'tools', '.dev-store.json');
@@ -33,10 +40,31 @@ const arg = (name) => {
 
 const PORT = Number(arg('port') || process.env.PORT || 8788);
 
+/**
+ * A draft spec from the builder, validated before it is served. Refusing to start on a broken
+ * flow is the point: a dangling branch that only shows up when a candidate walks into it is
+ * exactly the bug this is here to catch, and it is much cheaper to catch at the command line.
+ */
+function loadSpec(path) {
+  const spec = JSON.parse(readFileSync(path, 'utf8'));
+  const problems = validateFlow(spec.questions || []);
+  const errors = problems.filter((p) => p.level === 'error');
+  for (const p of problems) console.log(`  ${p.level === 'error' ? 'error  ' : 'warning'} ${p.message}`);
+  if (errors.length) {
+    console.error(`\n${path} has ${errors.length} error${errors.length === 1 ? '' : 's'}. Not starting.`);
+    process.exit(1);
+  }
+  console.log(`spec:   ${path} (${spec.questions.length} questions)`);
+  return spec;
+}
+
+const SPEC = arg('spec') ? loadSpec(arg('spec')) : {};
+
 // `--duration=120` shortens the clock so you can watch the time-up screen without waiting the
 // full 90 minutes. Mirrors the DURATION_SEC variable in production.
 const CFG = config({
-  durationSec: arg('duration') || process.env.DURATION_SEC,
+  ...SPEC,
+  durationSec: arg('duration') || process.env.DURATION_SEC || SPEC.durationSec,
   openRegistration: arg('registration') || process.env.OPEN_REGISTRATION,
   // Local testing wants this on almost always, hence the default the deployed site never gets.
   allowSelfReset: arg('selfreset') || process.env.ALLOW_SELF_RESET || 'on',

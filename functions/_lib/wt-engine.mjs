@@ -9,12 +9,15 @@
  *      and never rewritten. A refresh, a new browser, incognito, another device, or a
  *      cleared cache all read back the same `startedAt` and therefore the same deadline.
  *      The client is told the deadline; it does not decide it.
- *   2. Answers cannot be revisited. The server hands out exactly one question, the one at
- *      index === answers.length. There is no endpoint that edits or deletes an answer, and
- *      `answer` refuses any index that is not the next one. Going back is not a UI state we
- *      hide, it is an operation that does not exist.
+ *   2. Answers cannot be revisited. The server works out the single question the candidate is
+ *      on and refuses a submission for anything else. With branching that is no longer a matter
+ *      of counting, so it is resolved in wt-flow.mjs from what they have already answered, but
+ *      the property is unchanged: there is no endpoint that edits or deletes an answer, and
+ *      going back is not a UI state we hide, it is an operation that does not exist.
  *   3. Questions cannot be read ahead. Only the current question is ever serialized to the
- *      client. QUESTIONS is never sent as a whole.
+ *      client, QUESTIONS is never sent as a whole, and an option's destination is stripped
+ *      before options reach the page, so making a choice is never also a preview of where each
+ *      choice would have led.
  *
  * What this does NOT prevent, stated plainly: a candidate can still read the question and
  * ask someone else, or paste in an answer written elsewhere. Pastes and tab switches are
@@ -23,6 +26,10 @@
 
 import { QUESTIONS, BRIEFS, SECTIONS, DURATION_SEC, GRACE_SEC, INTEGRITY } from './wt-questions.mjs';
 import { sanitizeRich, richIsEmpty, richToText, richWordCount } from './wt-rich.mjs';
+import {
+  currentQuestionId, questionById, firstQuestionId, optionLabels,
+  remainingRange, sectionOutlook,
+} from './wt-flow.mjs';
 
 const KEY = (token) => `c:${token}`;
 /**
@@ -56,6 +63,20 @@ export function config(overrides = {}) {
     // clock is restartable by anyone holding the link. It defaults to off and has to be turned
     // on deliberately (ALLOW_SELF_RESET=on), so forgetting about it fails safe.
     allowSelfReset: flag(overrides.allowSelfReset) === 'on',
+    // The whole test definition travels in the config, defaulting to the one compiled into
+    // wt-questions.mjs. Two things need this. Tests drive branching fixtures through the real
+    // engine rather than through a copy of it, and the dev server can run a draft spec exported
+    // from the builder, so "try it live" is the actual engine rather than a simulation of it.
+    //
+    // Production sets none of these. The deployed test is the compiled one, which is what keeps
+    // the question set out of reach of anything a request can influence.
+    questions: Array.isArray(overrides.questions) && overrides.questions.length
+      ? overrides.questions
+      : QUESTIONS,
+    sections: Array.isArray(overrides.sections) && overrides.sections.length
+      ? overrides.sections
+      : SECTIONS,
+    briefs: overrides.briefs && typeof overrides.briefs === 'object' ? overrides.briefs : BRIEFS,
   };
 }
 
@@ -73,21 +94,30 @@ const clamp = (s, n) => String(s == null ? '' : s).slice(0, n);
  * never a brief belonging to a part they have not reached: Part 2's email would otherwise
  * tell them what Part 1's answer is being tested for.
  */
-function publicQuestion(index) {
-  const q = QUESTIONS[index];
+function publicQuestion(id, answers, cfg) {
+  const q = questionById(id, cfg.questions);
   if (!q) return null;
+  const answered = answers.length;
+  const ahead = remainingRange(id, cfg.questions, answers.map((a) => a.id));
   return {
-    index,
-    number: index + 1,
-    total: QUESTIONS.length,
+    id: q.id,
+    index: answered,
+    number: answered + 1,
+    // Only ever a certainty. When the routes ahead differ in length there is no honest total to
+    // give, and a guessed one would move under the candidate as they answer, which is the exact
+    // thing a progress indicator exists to prevent.
+    total: ahead.certain ? answered + ahead.max : null,
+    isLast: ahead.max <= 1,
     type: q.type,
     prompt: q.prompt,
     context: q.context || null,
-    options: q.options || null,
+    // Labels only. optionLabels is what stops a branching option from telling the candidate
+    // where it leads.
+    options: optionLabels(q),
     maxLength: q.maxLength || (q.type === 'long' ? 2000 : 300),
     placeholder: q.placeholder || null,
     required: q.required !== false,
-    brief: q.brief ? BRIEFS[q.brief] || null : null,
+    brief: q.brief ? cfg.briefs[q.brief] || null : null,
   };
 }
 
@@ -102,31 +132,54 @@ function publicQuestion(index) {
  * Safe to send in full. It describes the shape of the task, which the instructions page already
  * states outright, and never the content of a question the candidate has not reached.
  */
-function progressOf(answered) {
-  const totalMin = SECTIONS.reduce((n, s) => n + s.recommendedMin, 0) || 1;
-  let current = -1;
+function progressOf(answers, currentId, cfg) {
+  const questions = cfg.questions;
+  const allSections = cfg.sections;
+  const sectionIdOf = (q) => (q && q.section) || allSections[0].id;
+  const answeredIds = answers.map((a) => a.id);
+  const ahead = sectionOutlook(currentId, questions, answeredIds, sectionIdOf, allSections.map((s) => s.id));
+  const hereId = currentId == null ? null : sectionIdOf(questionById(currentId, questions));
 
-  const sections = SECTIONS.map((s, i) => {
-    const indexes = QUESTIONS
-      .map((q, qi) => ((q.section || SECTIONS[0].id) === s.id ? qi : -1))
-      .filter((qi) => qi >= 0);
-    const done = indexes.filter((qi) => qi < answered).length;
-    const holdsCurrent = indexes.includes(answered);
+  let current = -1;
+  const sections = allSections.map((s, i) => {
+    const done = answers.filter((a) => sectionIdOf(questionById(a.id, questions)) === s.id).length;
+    const up = ahead.get(s.id) || { min: 0, max: 0, certain: true };
+    const holdsCurrent = hereId === s.id;
     if (holdsCurrent) current = i;
+
+    // A branch can route around an entire part. Calling that part 'todo' would be a lie, and
+    // calling it 'done' would be a different one, so it gets its own state.
+    const state = holdsCurrent ? 'current'
+      : up.max > 0 ? 'todo'
+      : done ? 'done'
+      : 'skipped';
 
     return {
       id: s.id,
       label: s.label,
       summary: s.summary,
       recommendedMin: s.recommendedMin,
-      share: Math.round((s.recommendedMin / totalMin) * 100),
-      total: indexes.length,
+      total: up.certain ? done + up.max : null,
       done,
-      state: done >= indexes.length ? 'done' : holdsCurrent ? 'current' : 'todo',
+      state,
+      // Worked out here rather than in the page, because when the total is uncertain the honest
+      // denominator is the shortest route still ahead, and that is not the client's business.
+      fill: state === 'done' ? 100
+        : state === 'skipped' ? 0
+        : Math.round((done / Math.max(1, done + up.min)) * 100),
     };
   });
 
-  const effortDone = sections.reduce((n, s) => n + (s.total ? (s.done / s.total) * s.recommendedMin : 0), 0);
+  // Shares cover only the parts this candidate will actually sit, so a part their branch skipped
+  // does not hold a slice of the bar that nothing can ever fill.
+  const plannedMin = sections.reduce((n, s) => n + (s.state === 'skipped' ? 0 : s.recommendedMin), 0) || 1;
+  for (const s of sections) s.share = Math.round((s.recommendedMin / plannedMin) * 100);
+
+  const effortDone = sections.reduce((n, s) => {
+    if (s.state === 'skipped') return n;
+    if (s.state === 'done') return n + s.recommendedMin;
+    return n + (s.fill / 100) * s.recommendedMin;
+  }, 0);
   const here = sections[current];
 
   return {
@@ -135,8 +188,10 @@ function progressOf(answered) {
     sectionTotal: sections.length,
     inSection: here ? here.done + 1 : null,
     inSectionTotal: here ? here.total : null,
-    percentDone: Math.round((effortDone / totalMin) * 100),
-    minutesLeft: sections.filter((s) => s.state !== 'done').reduce((n, s) => n + s.recommendedMin, 0),
+    percentDone: Math.round((effortDone / plannedMin) * 100),
+    minutesLeft: sections
+      .filter((s) => s.state === 'current' || s.state === 'todo')
+      .reduce((n, s) => n + s.recommendedMin, 0),
   };
 }
 
@@ -148,7 +203,9 @@ function deadlineOf(rec, cfg) {
 function phaseOf(rec, now, cfg) {
   if (rec.finishedAt) return 'done';
   if (!rec.startedAt) return 'ready';
-  if (rec.answers.length >= QUESTIONS.length) return 'done';
+  // Finished means "this candidate's route has no next question", which with branching can
+  // happen at very different answer counts for two people sitting the same test.
+  if (!currentQuestionId(rec.answers, cfg.questions)) return 'done';
   if (now > deadlineOf(rec, cfg) + cfg.graceSec * 1000) return 'expired';
   return 'running';
 }
@@ -156,14 +213,21 @@ function phaseOf(rec, now, cfg) {
 /** The response shape the client renders from. Deliberately small. */
 function view(rec, now, cfg, extra = {}) {
   const phase = phaseOf(rec, now, cfg);
+  const currentId = currentQuestionId(rec.answers, cfg.questions);
+  const ahead = remainingRange(currentId, cfg.questions, rec.answers.map((a) => a.id));
+  const answered = rec.answers.length;
+
   const out = {
     ok: true,
     phase,
     serverNow: now,
     candidate: { name: rec.name || null },
     durationSec: cfg.durationSec,
-    total: QUESTIONS.length,
-    answered: rec.answers.length,
+    // Null when the routes ahead differ in length. The range is sent alongside so a page can
+    // still say something true, like "between 5 and 7 questions", instead of inventing a number.
+    total: ahead.certain ? answered + ahead.max : null,
+    totalRange: { min: answered + ahead.min, max: answered + ahead.max, certain: ahead.certain },
+    answered,
     ranOut: !!rec.ranOut,
     blockPaste: INTEGRITY.blockPaste,
     allowSelfReset: cfg.allowSelfReset,
@@ -171,12 +235,12 @@ function view(rec, now, cfg, extra = {}) {
   };
   if (rec.startedAt) out.deadline = deadlineOf(rec, cfg);
   if (phase === 'running') {
-    out.question = publicQuestion(rec.answers.length);
-    out.progress = progressOf(rec.answers.length);
+    out.question = publicQuestion(currentId, rec.answers, cfg);
+    out.progress = progressOf(rec.answers, currentId, cfg);
   }
   // On the instructions screen there is no current question, but the shape of the task is
   // exactly what someone deciding whether to press start wants to see.
-  if (phase === 'ready') out.progress = progressOf(0);
+  if (phase === 'ready') out.progress = progressOf([], firstQuestionId(cfg.questions), cfg);
   return out;
 }
 
@@ -192,6 +256,7 @@ async function load(store, token) {
 export async function handle(store, body, now = Date.now(), cfg = config()) {
   // These two run before a token exists, so they sit ahead of the token lookup.
   if (body.action === 'hello') {
+    const ahead = remainingRange(firstQuestionId(cfg.questions), cfg.questions, []);
     return {
       ok: true,
       phase: 'anonymous',
@@ -199,7 +264,8 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       openRegistration: cfg.openRegistration,
       allowSelfReset: cfg.allowSelfReset,
       durationSec: cfg.durationSec,
-      total: QUESTIONS.length,
+      total: ahead.certain ? ahead.max : null,
+      totalRange: { min: ahead.min, max: ahead.max, certain: ahead.certain },
     };
   }
   if (body.action === 'register') return register(store, body, now, cfg);
@@ -227,23 +293,38 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       const phase = phaseOf(rec, now, cfg);
       if (phase !== 'running') return view(rec, now, cfg, { rejected: phase });
 
-      const index = Number(body.index);
-      // The only acceptable index is the next one. This kills both going back and a
-      // duplicate submit from a double click or a retried request.
-      if (index !== rec.answers.length) return view(rec, now, cfg, { rejected: 'out_of_order' });
+      // The server decides which question is open; the client only gets to agree with it. Each
+      // check on its own kills going back and kills a duplicate submit from a double click or a
+      // retried request, because neither can be satisfied twice with the same values.
+      const currentId = currentQuestionId(rec.answers, cfg.questions);
+      if (!currentId) return view(rec, now, cfg, { rejected: 'done' });
+      if (Number(body.index) !== rec.answers.length) return view(rec, now, cfg, { rejected: 'out_of_order' });
+      if (body.questionId && String(body.questionId) !== currentId) {
+        return view(rec, now, cfg, { rejected: 'out_of_order' });
+      }
 
-      const q = QUESTIONS[index];
+      const q = questionById(currentId, cfg.questions);
       const rich = q.type === 'rich';
       const max = q.maxLength || (rich || q.type === 'long' ? 2000 : 300);
 
       let value;
+      let choiceIndex;
       if (rich) {
         // Formatted answers arrive as blocks, never as HTML. See wt-rich.mjs for why.
         value = sanitizeRich(body.value, max).blocks;
       } else if (q.type === 'choice') {
-        // Never trust a client-sent label; accept only an index into our own options.
+        // Never trust a client-sent label; accept only an index into our own options. The index
+        // is then kept alongside the label, because with branching it is the index that decides
+        // the route: an author fixing a typo in an option's wording must not silently reroute a
+        // candidate who is part-way through.
+        const labels = optionLabels(q) || [];
         const pick = Number(body.value);
-        value = Number.isInteger(pick) && q.options[pick] != null ? q.options[pick] : '';
+        if (Number.isInteger(pick) && labels[pick] != null) {
+          value = labels[pick];
+          choiceIndex = pick;
+        } else {
+          value = '';
+        }
       } else {
         value = clamp(body.value, max);
       }
@@ -255,9 +336,11 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       const prevAt = rec.answers.length ? rec.answers[rec.answers.length - 1].at : rec.startedAt;
       rec.answers.push({
         id: q.id,
-        index,
+        index: rec.answers.length,
         prompt: q.prompt,
         value,
+        // Only present on a choice, and the reason the route survives an edit to the wording.
+        ...(choiceIndex === undefined ? {} : { choiceIndex }),
         // Lets the admin page and the CSV know how to read `value` without re-deriving it from
         // the question list, which may have been edited since this answer was written.
         format: rich ? 'rich' : 'text',
@@ -267,7 +350,9 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         pastes: Math.max(0, Math.min(99, Number(body.pastes) || 0)),
         blurs: Math.max(0, Math.min(99, Number(body.blurs) || 0)),
       });
-      if (rec.answers.length >= QUESTIONS.length) rec.finishedAt = now;
+      // The route decides when the test is over, not a count: two candidates sitting the same
+      // test can finish after different numbers of questions.
+      if (!currentQuestionId(rec.answers, cfg.questions)) rec.finishedAt = now;
       await store.put(KEY(token), rec);
       return view(rec, now, cfg);
     }
@@ -301,7 +386,9 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         openRegistration: cfg.openRegistration,
         allowSelfReset: true,
         durationSec: cfg.durationSec,
-        total: QUESTIONS.length,
+        total: remainingRange(firstQuestionId(cfg.questions), cfg.questions, []).certain
+          ? remainingRange(firstQuestionId(cfg.questions), cfg.questions, []).max
+          : null,
         wasReset: true,
       };
     }
@@ -419,6 +506,13 @@ export async function listCandidates(store, now = Date.now(), cfg = config()) {
     // Skip anything that is not a session record rather than throwing: one bad row must not stop
     // a reviewer from seeing every other submission.
     if (!token || !Array.isArray(rec.answers)) continue;
+    // With branching the total is per candidate, and null whenever their remaining routes differ
+    // in length. The admin page renders that as "3 / ?" rather than guessing.
+    const aheadOf = remainingRange(
+      currentQuestionId(rec.answers, cfg.questions),
+      cfg.questions,
+      rec.answers.map((a) => a.id),
+    );
     rows.push({
       token,
       name: rec.name,
@@ -429,7 +523,7 @@ export async function listCandidates(store, now = Date.now(), cfg = config()) {
       ranOut: !!rec.ranOut,
       phase: phaseOf(rec, now, cfg),
       answered: rec.answers.length,
-      total: QUESTIONS.length,
+      total: aheadOf.certain ? rec.answers.length + aheadOf.max : null,
       answers: rec.answers,
     });
   }
@@ -453,14 +547,18 @@ export function toCsv(rows) {
   const iso = (ms) => (ms ? new Date(ms).toISOString() : '');
   // Pastes and tab switches are activity context, not integrity signals: candidates are told
   // they may use AI and must open a spreadsheet, so both are expected behaviour.
+  // question_id is what makes a branching test readable in a spreadsheet: two candidates can
+  // both have a fourth answer without it being the same question, so the position alone no
+  // longer identifies what was asked.
   const head = [
     'name', 'email', 'status', 'started_utc', 'finished_utc', 'ran_out',
-    'question', 'prompt', 'answer', 'seconds_on_question', 'words', 'pastes', 'tab_switches',
+    'question', 'question_id', 'prompt', 'answer', 'seconds_on_question', 'words',
+    'pastes', 'tab_switches',
   ];
   const lines = [head.map(esc).join(',')];
   for (const r of rows) {
     if (!r.answers.length) {
-      lines.push([r.name, r.email, r.phase, iso(r.startedAt), iso(r.finishedAt), r.ranOut ? 'yes' : 'no', '', '', '', '', '', '', ''].map(esc).join(','));
+      lines.push([r.name, r.email, r.phase, iso(r.startedAt), iso(r.finishedAt), r.ranOut ? 'yes' : 'no', '', '', '', '', '', '', '', ''].map(esc).join(','));
       continue;
     }
     for (const a of r.answers) {
@@ -468,7 +566,7 @@ export function toCsv(rows) {
         r.name, r.email, r.phase, iso(r.startedAt), iso(r.finishedAt), r.ranOut ? 'yes' : 'no',
         // Formatted answers flatten to text with `##` and `-` markers kept, so the structure the
         // candidate chose survives into a spreadsheet cell.
-        a.index + 1, a.prompt, richToText(a.value), Math.round(a.msSpent / 1000), richWordCount(a.value),
+        a.index + 1, a.id || '', a.prompt, richToText(a.value), Math.round(a.msSpent / 1000), richWordCount(a.value),
         a.pastes, a.blurs,
       ].map(esc).join(','));
     }

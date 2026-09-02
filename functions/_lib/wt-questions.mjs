@@ -97,6 +97,33 @@ export const BRIEFS = {
  *
  * Optional per-question fields: brief (key into BRIEFS), required (default true), maxLength,
  * placeholder, context.
+ *
+ * BRANCHING. By default each question falls through to the next one in this array, which is why
+ * a list with no branching at all behaves exactly as it always did. Two fields change that:
+ *
+ *   next: 'some_id'   go here instead of the following question
+ *   next: null        end the test here
+ *
+ * and on a 'choice' question, each option can carry its own destination:
+ *
+ *   { id: 'stance', type: 'choice', prompt: 'What do you recommend?', options: [
+ *       { label: 'Expand into more states', next: 'expand_1' },
+ *       { label: 'Pivot to a deeper pilot',  next: 'pivot_1'  },
+ *       { label: 'Hold and gather data',     next: 'why_hold' },
+ *   ]},
+ *
+ * Plain string options still work and never branch. An option's destination is stripped before
+ * options reach the candidate, so choosing is never also a preview of what each choice costs.
+ *
+ * Three things to know before wiring a branch:
+ *
+ *   - Routes only go forward. A route back to an answered question ends the test rather than
+ *     re-serving it, because that answer is already final. `validateFlow` in wt-flow.mjs reports
+ *     a loop as an error, and `node --test tools/flow.test.mjs` will fail on one.
+ *   - Sections a branch skips disappear from that candidate's progress bar, and the recommended
+ *     minutes of the parts they DO see are what the bar is shared out over.
+ *   - Where routes differ in length there is no total to show, so the client says "Question 3"
+ *     rather than "Question 3 of 6". Keep routes the same length if you want the count back.
  */
 export const QUESTIONS = [
   {

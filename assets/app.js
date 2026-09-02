@@ -3,7 +3,7 @@
  *
  * It holds no copy of the questions, does not decide the deadline, and has no code path that
  * moves backwards. If someone edits this file in devtools the worst they achieve is a broken
- * page, because every response is re-validated server-side (see functions/_lib/engine.js).
+ * page, because every response is re-validated server-side (see functions/_lib/wt-engine.mjs).
  *
  * The clock shown here is cosmetic. `deadline` comes from the server and every response
  * carries `serverNow`, which we use to correct for a wrong device clock. A candidate who
@@ -30,6 +30,9 @@ let inFlight = false;
 let signals = { pastes: 0, blurs: 0 }; // reset at the start of each question
 let guarded = false;
 let currentIndex = -1;
+// The id of the question on screen. Since questions branch, position is no longer enough to say
+// which one a submission is for, and the server checks the two against each other.
+let currentQid = null;
 // Mirrors INTEGRITY.blockPaste from the server. Kept at module scope so a paste handler can ask
 // the current answer rather than one captured when its question was built.
 let serverBlockPaste = false;
@@ -43,13 +46,25 @@ document.addEventListener('visibilitychange', () => {
 
 const now = () => Date.now() + clockOffset;
 
+/**
+ * Every failure the server can produce comes back as JSON, so the only thing this has to add is
+ * what happens when there is no response at all. An offline moment used to reject here and take
+ * the whole click handler with it: `inFlight` stayed true, the button sat on "Saving..." forever,
+ * and the candidate was left on a dead page with the clock still running. Now it becomes an
+ * ordinary error object, and the caller decides what to do about it.
+ */
 async function api(action, extra = {}) {
-  const res = await fetch('/api/work-test', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action, token, ...extra }),
-  });
-  const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
+  let data;
+  try {
+    const res = await fetch('/api/work-test', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action, token, ...extra }),
+    });
+    data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
+  } catch {
+    return { ok: false, error: 'network' };
+  }
   if (typeof data.serverNow === 'number') clockOffset = data.serverNow - Date.now();
   if (typeof data.blockPaste === 'boolean') serverBlockPaste = data.blockPaste;
   if (data.token) {
@@ -58,6 +73,19 @@ async function api(action, extra = {}) {
   }
   return data;
 }
+
+/**
+ * Failures that mean "press it again", as opposed to "this session is over". The difference
+ * matters more here than in most apps: redrawing the screen on one of these would throw away an
+ * answer the candidate is part-way through typing, on a clock they cannot get back. So every
+ * caller that has unsaved work on screen checks this FIRST and leaves the page untouched.
+ */
+const TRANSIENT = new Set(['network', 'bad_response', 'store_unavailable']);
+const isTransient = (res) => !!res && !res.ok && TRANSIENT.has(res.error);
+
+/** Said whenever we could not reach the server. The reassurance is the important half. */
+const RETRY_MSG = 'We could not reach the server. Nothing has been lost. Check your connection '
+  + 'and press the button again, and do not reload or start over.';
 
 function screen(id) {
   app.replaceChildren($(`#tpl-${id}`).content.cloneNode(true));
@@ -148,6 +176,7 @@ function renderIdentify(state) {
     if (!res.ok) {
       go.disabled = false;
       go.textContent = 'Continue';
+      if (isTransient(res)) return showError(res.detail || RETRY_MSG);
       return showError(res.error === 'registration_closed'
         ? 'This task is now invitation only. Please use the link we emailed you.'
         : 'We could not start the task. Check your name and email, then try again.');
@@ -171,7 +200,13 @@ function renderInstructions(state) {
   const first = (state.candidate.name || '').trim().split(/\s+/)[0];
   if (first) hook('greeting').textContent = `${first}, before you start`;
   hook('duration').textContent = humanDuration(state.durationSec);
-  hook('count').textContent = String(state.total);
+  // A branching test has no single length until the branches resolve, so say the honest range
+  // rather than pick a number that will turn out to be wrong for most people.
+  const range = state.totalRange;
+  hook('count').textContent = state.total != null ? String(state.total)
+    : range && range.min !== range.max ? `${range.min} to ${range.max}`
+    : range ? String(range.max)
+    : 'several';
   hook('who').textContent = state.candidate.name ? `Submitting as ${state.candidate.name}` : '';
   // Show the shape of the task before they commit to starting it, not only once the clock runs.
   renderProgress(state.progress, { preview: true });
@@ -190,6 +225,12 @@ function renderInstructions(state) {
  * rather than by how many questions it holds. Part 1 is two thirds of the recommended time, so
  * it gets two thirds of the width, and finishing it genuinely means two thirds done.
  */
+/** How many questions a part holds, or an honest refusal when the branch decides. */
+function countOf(s) {
+  if (s.total == null) return 'a number of questions that depends on your answers';
+  return `${s.total} question${s.total === 1 ? '' : 's'}`;
+}
+
 function renderProgress(progress, { preview = false } = {}) {
   const track = hook('track');
   const note = hook('tracknote');
@@ -197,14 +238,21 @@ function renderProgress(progress, { preview = false } = {}) {
 
   track.replaceChildren();
   for (const s of progress.sections) {
+    // A part this candidate's branch routes around is not drawn at all. The server has already
+    // taken it out of the shares, so drawing it would leave a slice of the bar that nothing can
+    // ever fill, which reads as being permanently behind.
+    if (s.state === 'skipped') continue;
+
     const seg = document.createElement('div');
     seg.className = `seg ${s.state}`;
     seg.style.flexGrow = String(s.recommendedMin);
-    seg.title = `${s.label}: ${s.summary}. About ${s.recommendedMin} minutes, ${s.total} question${s.total === 1 ? '' : 's'}.`;
+    seg.title = `${s.label}: ${s.summary}. About ${s.recommendedMin} minutes, ${countOf(s)}.`;
 
     const fill = document.createElement('div');
     fill.className = 'seg-fill';
-    fill.style.width = `${s.total ? (s.done / s.total) * 100 : 0}%`;
+    // Worked out server-side: when the total is unknown the honest denominator is the shortest
+    // route still ahead, and the page has deliberately not been told what that is.
+    fill.style.width = `${s.fill}%`;
     seg.append(fill);
 
     const tag = document.createElement('span');
@@ -219,18 +267,24 @@ function renderProgress(progress, { preview = false } = {}) {
   if (preview) {
     // Before the clock starts, describe the shape rather than a position within it.
     note.textContent = progress.sections
-      .map((s) => `${s.label}, ${s.summary.toLowerCase()}: ${s.total} question${s.total === 1 ? '' : 's'}, about ${s.recommendedMin} minutes (${s.share}% of the work)`)
+      .filter((s) => s.state !== 'skipped')
+      .map((s) => `${s.label}, ${s.summary.toLowerCase()}: ${countOf(s)}, about ${s.recommendedMin} minutes (${s.share}% of the work)`)
       .join('. ') + '. Those timings are a suggestion, not a rule; the only hard limit is the total.';
     return;
   }
 
   const here = progress.sections[progress.sectionNumber - 1];
-  const rest = progress.sections.slice(progress.sectionNumber);
+  const rest = progress.sections.slice(progress.sectionNumber).filter((s) => s.state !== 'skipped');
   const parts = [];
   if (here) {
+    const where = here.total == null
+      ? `Question ${progress.inSection} in this part`
+      : `Question ${progress.inSection} of ${here.total} in this part`;
+    const planned = progress.sections
+      .filter((s) => s.state !== 'skipped')
+      .reduce((n, s) => n + s.recommendedMin, 0);
     parts.push(`${here.label} of ${progress.sectionTotal}: ${here.summary}. `
-      + `Question ${progress.inSection} of ${here.total} in this part, and this part is about `
-      + `${here.recommendedMin} minutes of the ${progress.sections.reduce((n, s) => n + s.recommendedMin, 0)}.`);
+      + `${where}, and this part is about ${here.recommendedMin} minutes of the ${planned}.`);
   }
   parts.push(rest.length
     ? `Still to come: ${rest.map((s) => `${s.label} (${s.summary.toLowerCase()}, about ${s.recommendedMin} min)`).join(', ')}.`
@@ -557,7 +611,15 @@ async function openReview() {
   dlg.append(head);
 
   const answers = (res && res.review) || [];
-  if (!answers.length) {
+  if (isTransient(res)) {
+    // Saying "you have not submitted anything yet" here would be a lie, and an alarming one to
+    // read forty minutes into a test. Say what actually happened.
+    const p = document.createElement('p');
+    p.className = 'err';
+    p.textContent = 'We could not load your answers just now. They are safely stored; close this '
+      + 'and open it again in a moment.';
+    dlg.append(p);
+  } else if (!answers.length) {
     const p = document.createElement('p');
     p.className = 'muted';
     p.textContent = 'You have not submitted anything yet.';
@@ -712,14 +774,18 @@ function renderQuestion(state) {
   const q = state.question;
   deadline = state.deadline;
   currentIndex = q.index;
+  currentQid = q.id;
   signals = { pastes: 0, blurs: 0 };
   screen('question');
 
   const p = state.progress;
   hook('section').textContent = p ? `${p.sections[p.sectionNumber - 1].label} of ${p.sectionTotal} · ` : '';
+  const inPart = p && p.inSectionTotal == null
+    ? `Question ${p.inSection} in this part`
+    : p ? `Question ${p.inSection} of ${p.inSectionTotal} in this part` : '';
   hook('progress').textContent = p
-    ? `Question ${p.inSection} of ${p.inSectionTotal} in this part · ${p.percentDone}% done`
-    : `Question ${q.number} of ${q.total}`;
+    ? `${inPart} · ${p.percentDone}% done`
+    : q.total == null ? `Question ${q.number}` : `Question ${q.number} of ${q.total}`;
   hook('prompt').textContent = q.prompt;
   if (q.context) {
     const c = hook('context');
@@ -731,7 +797,10 @@ function renderQuestion(state) {
 
   const field = hook('field');
   const next = hook('next');
-  next.textContent = q.number === q.total ? 'Submit final answer' : 'Lock in and continue';
+  // isLast comes from the server, which is the only thing that knows whether every route out of
+  // this question ends here. Comparing a number against a total cannot answer that any more.
+  const nextLabel = q.isLast ? 'Submit final answer' : 'Lock in and continue';
+  next.textContent = nextLabel;
 
   // Looking back is allowed; changing is not. The dialog leaves this question untouched.
   const review = reviewButton(state);
@@ -838,8 +907,17 @@ function renderQuestion(state) {
     inFlight = true;
     next.disabled = true;
     next.textContent = 'Saving…';
-    const res = await api('answer', { index: q.index, value, ...signals });
+    const res = await api('answer', { index: q.index, questionId: q.id, value, ...signals });
     inFlight = false;
+    if (isTransient(res)) {
+      // The server recorded nothing and the editor still holds every word of the answer, so the
+      // whole recovery is to put the button back and let them press it again. Re-rendering would
+      // be the one unrecoverable mistake available at this point.
+      next.disabled = false;
+      next.textContent = nextLabel;
+      showError(res.detail || RETRY_MSG);
+      return;
+    }
     render(res);
   });
 
@@ -850,6 +928,7 @@ function renderDone(state) {
   stopClock();
   deadline = null;
   currentIndex = -1;
+  currentQid = null;
   screen('done');
   const n = state.answered;
   if (state.phase === 'expired' || state.ranOut) {
@@ -921,11 +1000,21 @@ function startClock(getDraft) {
     inFlight = true;
     const draft = getDraft ? getDraft() : null;
     if (!isBlank(draft) && currentIndex >= 0) {
-      await api('answer', { index: currentIndex, value: draft, ...signals }).catch(() => {});
+      await api('answer', { index: currentIndex, questionId: currentQid, value: draft, ...signals });
     }
     inFlight = false;
     currentIndex = -1;
-    render(await api('finish'));
+    currentQid = null;
+
+    // The clock has run out whether or not we can say so, and this is the worst possible moment
+    // to show someone "this link is not valid". Retry a few times before falling back to the
+    // offline screen, which at least tells them the truth and offers a button.
+    let res = await api('finish');
+    for (let attempt = 0; isTransient(res) && attempt < 5; attempt += 1) {
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+      res = await api('finish');
+    }
+    render(res);
   };
 
   tick();
@@ -934,8 +1023,30 @@ function startClock(getDraft) {
 
 /* ---------------------------------------------------------------------- router ------- */
 
+/**
+ * Shown only when the server could not be reached at all. Safe to draw over whatever was on
+ * screen, because every caller holding unsaved work intercepts a transient failure before it
+ * reaches the router.
+ */
+function renderOffline(state) {
+  stopClock();
+  screen('offline');
+  if (state && state.detail) hook('detail').textContent = state.detail;
+  const btn = hook('retry');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Trying again...';
+    // The deadline is held on the server, so nothing here can buy time by reconnecting late.
+    render(await api(token ? 'state' : 'hello'));
+  });
+}
+
 function render(state) {
   if (!state || !state.ok) {
+    // A connection that dropped is not a dead session, and telling someone mid-test that their
+    // link is invalid would send them looking for a new one, which is the one thing that cannot
+    // help: the session is keyed to them either way.
+    if (isTransient(state)) return renderOffline(state);
     // A stored token that the server no longer recognises should not strand a candidate on a
     // dead end; drop it and let them identify themselves again.
     if (state && state.error === 'invalid_link' && !params.get('t') && localStorage.getItem(STORE_KEY)) {

@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex, nofollow, noarchive">
 <title>2AI Work Task</title>
 <link rel="stylesheet" href="assets/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f5f4f'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M16 10.5V16l3.6 2.6' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
 </head>
 <body>
 <div class="demo-banner">
@@ -25,6 +26,19 @@
     <h1>This link is not valid</h1>
     <p>The link may have been mistyped, or it may have been withdrawn. Reply to the email you received and we will send a fresh one.</p>
     <p class="muted">If you were part-way through, do not start again from a new link. Email <a href="mailto:careers@aiaccessinitiative.org">careers@aiaccessinitiative.org</a> and tell us what happened.</p>
+  </section>
+</template>
+
+<template id="tpl-offline">
+  <section class="card">
+    <h1>We cannot reach the server</h1>
+    <p data-hook="detail">Either this device has lost its connection, or our end is briefly unavailable.</p>
+    <p>Nothing you have already submitted is affected. If your task has started, the clock is held on our server rather than in this page, so reconnecting does not cost you anything beyond the time itself.</p>
+    <p class="muted">Try again in a moment. Do not open a new link or start over: it will not give you more time, and this session is the one we will read.</p>
+    <footer class="bar bottom">
+      <span class="muted small">Nothing is submitted from this screen.</span>
+      <button class="primary" data-hook="retry">Try again</button>
+    </footer>
   </section>
 </template>
 

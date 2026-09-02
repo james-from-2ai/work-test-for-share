@@ -1,26 +1,27 @@
 /**
  * Cloudflare Pages Function: POST /api/work-test-admin
  *
- * Issues candidate links and reads results for the timed work test at /work-test/.
+ * Issues candidate links and reads results for the timed work test, served at the site root in
+ * this copy.
  *
- * Access control, two layers, and the second one matters more than it looks:
+ * Access control, and it is deliberately thinner here than in the internal copy:
  *
- *   1. Cloudflare Access already gates this whole hostname to @aiaccessinitiative.org, so
- *      today nobody outside the team can reach this endpoint.
- *   2. On top of that, a shared secret in the `x-admin-key` header, checked against the
- *      ADMIN_KEY environment secret. If ADMIN_KEY is unset, every admin action is refused
- *      rather than defaulting to open.
+ *   ADMIN_KEY, a shared secret sent in the `x-admin-key` header. If it is unset, every admin
+ *   action is refused rather than defaulting to open. That is the ONLY layer on this deployment.
+ *   There is no Cloudflare Access in front of this hostname, so this endpoint is reachable from
+ *   anywhere and the key is the whole of the defence.
  *
- * Layer 2 exists because layer 1 has to come off eventually. Candidates are external and have
- * no org Google account, so the day this test goes live to them, Access can no longer cover
- * the whole hostname. When that happens, do NOT simply remove the gate: this endpoint and
- * /work-test/admin.html would become internet-reachable with only ADMIN_KEY in front of
- * candidate answers. Read the work test section of CLAUDE.md first.
+ * That is acceptable only because what sits behind it is demo data, and three separate things
+ * depend on it staying that way: wt-store.mjs points at the demo Airtable table, admin.html
+ * accepts the key from a `?k=` query string and so leaks it into browser history, and README.md
+ * tells deployers to pick a short throwaway key. None of the three is safe with real candidates'
+ * answers behind it. If you need that, use the copy in master-mega-badass-site, which is gated
+ * by Cloudflare Access.
  *
  * Cloudflare environment variables (Pages project > Settings > Variables and secrets):
  *   ADMIN_KEY - REQUIRED, type Secret. Any long random string. Whoever holds it can read every
  *               candidate's answers, so treat it like a password and never commit it.
- *   TEST_PATH - optional, defaults to /work-test/. Only used to build candidate links.
+ *   TEST_PATH - optional, defaults to / in this copy. Only used to build candidate links.
  */
 
 import { createCandidates, listCandidates, deleteCandidate, toCsv, config } from '../_lib/wt-engine.mjs';

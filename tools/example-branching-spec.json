@@ -1,0 +1,76 @@
+{
+  "_comment": "An example draft spec, and the file shape the builder exports. Run it with: node tools/dev-server.mjs --spec=tools/example-branching-spec.json. The wording is placeholder on purpose; this file exists to demonstrate the branching fields, not to be a real assessment.",
+  "durationSec": 900,
+
+  "sections": [
+    { "id": "part1", "label": "Part 1", "summary": "Pick a direction", "recommendedMin": 5 },
+    { "id": "part2", "label": "Part 2", "summary": "Defend the direction", "recommendedMin": 10 }
+  ],
+
+  "briefs": {
+    "setup": {
+      "section": "Part 1 of 2",
+      "heading": "The situation",
+      "blocks": [
+        { "type": "p", "text": "Placeholder scenario. A pilot has run for two quarters and the results are mixed. You have been asked what to do next." },
+        {
+          "type": "quote",
+          "label": "Slack from your manager",
+          "text": "Need a call on this by Friday. Three options on the table as far as I can see, and I do not mind which, but I do want to know why."
+        }
+      ]
+    }
+  },
+
+  "questions": [
+    {
+      "id": "stance",
+      "section": "part1",
+      "brief": "setup",
+      "type": "choice",
+      "prompt": "Which direction do you recommend?",
+      "context": "Pick one. The questions after this one follow from what you choose here.",
+      "options": [
+        { "label": "Expand into more states", "next": "expand_where" },
+        { "label": "Pivot to a deeper pilot", "next": "pivot_what" },
+        { "label": "Hold and gather more data", "next": "hold_why" }
+      ]
+    },
+
+    {
+      "id": "expand_where",
+      "section": "part2",
+      "type": "rich",
+      "prompt": "Which states would you add, and what would you cut to pay for them?",
+      "maxLength": 1200,
+      "next": "wrap"
+    },
+    {
+      "id": "pivot_what",
+      "section": "part2",
+      "type": "rich",
+      "prompt": "What would you pivot to, and what would you stop doing?",
+      "maxLength": 1200,
+      "next": "wrap"
+    },
+    {
+      "id": "hold_why",
+      "section": "part1",
+      "type": "rich",
+      "prompt": "What would you need to see before committing either way?",
+      "context": "This route is deliberately shorter, which is what makes Part 2 disappear from the progress bar when you take it.",
+      "maxLength": 1200,
+      "next": null
+    },
+
+    {
+      "id": "wrap",
+      "section": "part2",
+      "type": "rich",
+      "required": false,
+      "prompt": "Anything you would add?",
+      "maxLength": 800,
+      "next": null
+    }
+  ]
+}
