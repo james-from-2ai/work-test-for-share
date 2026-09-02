@@ -179,7 +179,10 @@ test('answers are forward-only: an earlier index is refused', async () => {
   await handle(store, { action: 'answer', token, index: 0, value: answerFor(0) }, T0 + 5_000);
 
   const back = await handle(store, { action: 'answer', token, index: 0, value: [{ type: 'p', runs: [{ t: 'actually, this instead' }] }] }, T0 + 6_000);
-  assert.equal(back.rejected, 'out_of_order');
+  // 'no_edit' since editing became a setting, 'out_of_order' before it did. Which of the two it
+  // is matters far less than that the attempt was refused and nothing moved, so assert that
+  // rather than pinning a string that will change again the next time the wording improves.
+  assert.ok(['no_edit', 'out_of_order'].includes(back.rejected), `unexpected rejection: ${back.rejected}`);
   assert.equal(back.answered, 1, 'a resubmitted answer changed the record');
   assert.equal(back.question.index, 1, 'the candidate was moved off the current question');
 });
@@ -296,7 +299,9 @@ test('reviewing does not let an answer be changed', async () => {
 
   // The obvious follow-up attempt: read it back, then try to send a better version.
   const retry = await handle(store, { action: 'answer', token, index: 0, value: 'a better answer' }, T0 + 3_000);
-  assert.equal(retry.rejected, 'out_of_order');
+  // Refused because this test does not allow editing. The stored answer below is the assertion
+  // that actually matters; the code just says which rule did the refusing.
+  assert.ok(['no_edit', 'out_of_order'].includes(retry.rejected), `unexpected rejection: ${retry.rejected}`);
 
   const after = await handle(store, { action: 'review', token }, T0 + 4_000);
   assert.equal(after.review.length, 1);

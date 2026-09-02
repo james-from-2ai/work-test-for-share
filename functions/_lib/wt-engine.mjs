@@ -3,17 +3,25 @@
  * production and on a file-backed store in tools/dev-server.mjs locally. If a rule is not
  * enforced in this file, it is not enforced at all: the client is treated as hostile.
  *
+ * THREE OF THE RULES BELOW ARE NOW SETTINGS. An author can turn on back navigation and editing
+ * of submitted answers in the builder. Both default to OFF, and both genuinely change what the
+ * test measures rather than just how it feels: a forward-only test asks "what is your judgment
+ * with what you have now", and one you can revise asks something else. Where a rule is
+ * conditional it says so, and where it is absolute it still is.
+ *
  * The three guarantees the client cannot break, and how:
  *
  *   1. The timer cannot be reset. `startedAt` is written once, on the first `start` call,
  *      and never rewritten. A refresh, a new browser, incognito, another device, or a
  *      cleared cache all read back the same `startedAt` and therefore the same deadline.
  *      The client is told the deadline; it does not decide it.
- *   2. Answers cannot be revisited. The server works out the single question the candidate is
- *      on and refuses a submission for anything else. With branching that is no longer a matter
- *      of counting, so it is resolved in wt-flow.mjs from what they have already answered, but
- *      the property is unchanged: there is no endpoint that edits or deletes an answer, and
- *      going back is not a UI state we hide, it is an operation that does not exist.
+ *   2. Answers cannot be revisited, UNLESS the test says they can. By default the server works
+ *      out the single question the candidate is on and refuses a submission for anything else,
+ *      and going back is not a UI state we hide but an operation that does not exist. With
+ *      `navigation.edit` on, an answer at an earlier index can be replaced, and if that
+ *      replacement changes the route, every answer after it is discarded rather than left
+ *      stranded on a branch nobody took. The client cannot decide any of this: it asks, and
+ *      the server checks the setting.
  *   3. Questions cannot be read ahead. Only the current question is ever serialized to the
  *      client, QUESTIONS is never sent as a whole, and an option's destination is stripped
  *      before options reach the page, so making a choice is never also a preview of where each
@@ -31,6 +39,7 @@ import {
   remainingRange, sectionOutlook,
 } from './wt-flow.mjs';
 import { checkUpload, acceptAttribute, describeAllowed, MAX_UPLOAD_BYTES } from './wt-files.mjs';
+import { nextIdAfter } from './wt-flow.mjs';
 
 const KEY = (token) => `c:${token}`;
 /**
@@ -78,8 +87,101 @@ export function config(overrides = {}) {
       ? overrides.sections
       : SECTIONS,
     briefs: overrides.briefs && typeof overrides.briefs === 'object' ? overrides.briefs : BRIEFS,
+    timing: normalizeTiming(overrides, sectionList(overrides)),
+    // Both default to false, so a spec that says nothing behaves exactly as every earlier one
+    // did. Neither is a UI preference: see the note at the top of this file.
+    navigation: {
+      back: overrides.navigation ? overrides.navigation.back === true : false,
+      edit: overrides.navigation ? overrides.navigation.edit === true : false,
+    },
+    integrity: {
+      blockPaste: overrides.integrity
+        ? overrides.integrity.blockPaste === true
+        : INTEGRITY.blockPaste === true,
+    },
   };
 }
+
+const sectionList = (o) => (Array.isArray(o.sections) && o.sections.length ? o.sections : SECTIONS);
+
+/**
+ * Resolves how the clock works. Three modes, and they are genuinely different tests:
+ *
+ *   'total'   one clock for the whole thing. What this has always done.
+ *   'section' a clock per part. Running out of one part does NOT end the test: the unanswered
+ *             questions in that part are recorded as skipped and the candidate moves on to the
+ *             next part with a fresh clock. That is the point of per-part limits, to stop one
+ *             part eating another rather than to end the sitting early.
+ *   'none'    untimed. There is no deadline, nothing expires, and the client shows no clock.
+ *
+ * `durationSec` is still read for 'total' so every spec written before this existed keeps
+ * working without being touched.
+ */
+function normalizeTiming(o, sections) {
+  const raw = o.timing && typeof o.timing === 'object' ? o.timing : {};
+  const mode = ['total', 'section', 'none'].includes(raw.mode) ? raw.mode : 'total';
+
+  const d = Number(o.durationSec);
+  const totalSec = Number.isFinite(d) && d > 0 ? Math.floor(d) : DURATION_SEC;
+
+  const limits = {};
+  for (const s of sections) {
+    const mins = Number(s.limitMin);
+    if (Number.isFinite(mins) && mins > 0) limits[s.id] = Math.floor(mins * 60);
+  }
+  return { mode, totalSec, limits };
+}
+
+/* ------------------------------------------------------------ per-question rules ---- */
+
+/**
+ * Whether a question takes a file, and whether it insists on one.
+ *
+ * The old `type: 'upload'` still means "a name for the file, and the file is required", so no
+ * existing spec changes meaning. Everything written since can put an attachment on any question
+ * type instead, which is what makes "text only", "file only" and "both" one setting rather than
+ * three question types.
+ */
+export function attachmentOf(q) {
+  if (!q) return 'none';
+  const req = requireOf(q);
+  if (req === 'file' || req === 'both') return 'required';
+  if (req === 'either') return 'optional';
+  return q.attachment === 'required' || q.attachment === 'optional' ? q.attachment : 'none';
+}
+
+const REQUIREMENTS = ['text', 'file', 'either', 'both', 'optional'];
+
+/**
+ * What a question insists on before it will let the candidate continue.
+ *
+ *   'text'      a written answer
+ *   'file'      an attachment
+ *   'either'    one or the other, whichever suits the answer. This is the one worth having:
+ *               "give us your reasoning as a short write-up or as a PDF" asks for the thinking
+ *               and lets the candidate pick the medium, rather than making the medium the test.
+ *   'both'      a file AND something written about it, which is what the old 'upload' type was
+ *   'optional'  neither
+ *
+ * Derived from the older `required` and `attachment` fields when a spec does not say, so
+ * nothing written before this existed changes meaning.
+ */
+export function requireOf(q) {
+  if (!q) return 'optional';
+  if (REQUIREMENTS.includes(q.require)) return q.require;
+
+  if (q.type === 'upload') return q.required === false ? 'file' : 'both';
+  const attachment = q.attachment === 'required' || q.attachment === 'optional' ? q.attachment : 'none';
+  const wantsText = q.required !== false;
+  if (attachment === 'required') return wantsText ? 'both' : 'file';
+  return wantsText ? 'text' : 'optional';
+}
+
+/** Paste blocking, per question, falling back to the test-wide setting. */
+const pasteBlockedFor = (q, cfg) => (typeof q.blockPaste === 'boolean' ? q.blockPaste : cfg.integrity.blockPaste);
+
+/** Which part a question belongs to, defaulting to the first. */
+const sectionIdOf = (q, cfg) => (q && q.section) || cfg.sections[0].id;
 
 /** Tokens are opaque and unguessable; the token IS the candidate's authentication. */
 export function newToken() {
@@ -119,7 +221,11 @@ function publicQuestion(id, answers, cfg) {
     placeholder: q.placeholder || null,
     required: q.required !== false,
     brief: q.brief ? cfg.briefs[q.brief] || null : null,
-    ...(q.type === 'upload' ? {
+    section: sectionIdOf(q, cfg),
+    blockPaste: pasteBlockedFor(q, cfg),
+    attachment: attachmentOf(q),
+    require: requireOf(q),
+    ...(attachmentOf(q) !== 'none' ? {
       accept: acceptOf(q),
       acceptAttr: acceptAttribute(acceptOf(q)),
       acceptText: `Upload a ${describeAllowed(acceptOf(q))}, up to ${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB.`,
@@ -145,14 +251,14 @@ const acceptOf = (q) => (Array.isArray(q.accept) && q.accept.length ? q.accept :
 function progressOf(answers, currentId, cfg) {
   const questions = cfg.questions;
   const allSections = cfg.sections;
-  const sectionIdOf = (q) => (q && q.section) || allSections[0].id;
+  const inSection = (q) => sectionIdOf(q, cfg);
   const answeredIds = answers.map((a) => a.id);
-  const ahead = sectionOutlook(currentId, questions, answeredIds, sectionIdOf, allSections.map((s) => s.id));
-  const hereId = currentId == null ? null : sectionIdOf(questionById(currentId, questions));
+  const ahead = sectionOutlook(currentId, questions, answeredIds, inSection, allSections.map((s) => s.id));
+  const hereId = currentId == null ? null : inSection(questionById(currentId, questions));
 
   let current = -1;
   const sections = allSections.map((s, i) => {
-    const done = answers.filter((a) => sectionIdOf(questionById(a.id, questions)) === s.id).length;
+    const done = answers.filter((a) => inSection(questionById(a.id, questions)) === s.id).length;
     const up = ahead.get(s.id) || { min: 0, max: 0, certain: true };
     const holdsCurrent = hereId === s.id;
     if (holdsCurrent) current = i;
@@ -169,6 +275,10 @@ function progressOf(answers, currentId, cfg) {
       label: s.label,
       summary: s.summary,
       recommendedMin: s.recommendedMin,
+      // Only set in section mode, and it is what the client draws a per-part clock from.
+      limitMin: cfg.timing.mode === 'section' && cfg.timing.limits[s.id]
+        ? Math.round(cfg.timing.limits[s.id] / 60)
+        : null,
       total: up.certain ? done + up.max : null,
       done,
       state,
@@ -205,8 +315,79 @@ function progressOf(answers, currentId, cfg) {
   };
 }
 
-function deadlineOf(rec, cfg) {
-  return rec.startedAt + cfg.durationSec * 1000;
+/**
+ * When the clock the candidate is currently under runs out, or null when nothing is running.
+ * In section mode that is the deadline for the part they are in, not for the sitting.
+ */
+function deadlineOf(rec, cfg, sectionId) {
+  if (!rec.startedAt) return null;
+  const t = cfg.timing;
+  if (t.mode === 'none') return null;
+  if (t.mode === 'total') return rec.startedAt + t.totalSec * 1000;
+
+  const limit = t.limits[sectionId];
+  if (!limit) return null; // a part with no limit set simply is not timed
+  const from = (rec.sectionStarts && rec.sectionStarts[sectionId]) || rec.startedAt;
+  return from + limit * 1000;
+}
+
+/**
+ * Brings a session up to date with the clock before anything else looks at it.
+ *
+ * Only section mode needs this, and it is the part of per-part limits that actually does the
+ * work: when a part's time is gone, its unanswered questions are recorded as skipped and the
+ * candidate is moved into the next part on a fresh clock. Doing it here, on every request,
+ * means a candidate who closes the tab over a break comes back to the right place rather than
+ * to a part whose time ran out while they were away.
+ *
+ * Returns true when it changed something, so the caller knows to save.
+ */
+function settleSections(rec, now, cfg) {
+  if (cfg.timing.mode !== 'section' || !rec.startedAt || rec.finishedAt) return false;
+  let changed = false;
+
+  // Bounded by the question count: every pass either records an answer or stops.
+  for (let guard = 0; guard <= cfg.questions.length; guard++) {
+    const id = currentQuestionId(rec.answers, cfg.questions);
+    if (!id) break;
+    const q = questionById(id, cfg.questions);
+    const section = sectionIdOf(q, cfg);
+
+    rec.sectionStarts = rec.sectionStarts || {};
+    if (!rec.sectionStarts[section]) {
+      // A part starts when the previous answer was given, not when the sitting did.
+      rec.sectionStarts[section] = rec.answers.length
+        ? rec.answers[rec.answers.length - 1].at
+        : rec.startedAt;
+      changed = true;
+    }
+
+    const deadline = deadlineOf(rec, cfg, section);
+    if (deadline == null || now <= deadline + cfg.graceSec * 1000) break;
+
+    // Out of time on this part. Record the question as skipped rather than silently dropping it,
+    // so a reviewer can see what was never reached and why.
+    rec.answers.push({
+      id: q.id,
+      index: rec.answers.length,
+      prompt: q.prompt,
+      value: '',
+      format: 'text',
+      at: now,
+      msSpent: 0,
+      skipped: true,
+      pastes: 0,
+      blurs: 0,
+    });
+    changed = true;
+  }
+
+  if (!currentQuestionId(rec.answers, cfg.questions) && !rec.finishedAt) {
+    rec.finishedAt = now;
+    rec.ranOut = true;
+    changed = true;
+  }
+  return changed;
 }
 
 /** Single place that decides where a candidate stands, so every endpoint agrees. */
@@ -216,40 +397,84 @@ function phaseOf(rec, now, cfg) {
   // Finished means "this candidate's route has no next question", which with branching can
   // happen at very different answer counts for two people sitting the same test.
   if (!currentQuestionId(rec.answers, cfg.questions)) return 'done';
-  if (now > deadlineOf(rec, cfg) + cfg.graceSec * 1000) return 'expired';
+  // Only a whole-test clock can expire a sitting. An untimed test never does, and in section
+  // mode a spent clock moves the candidate on rather than ending things, which settleSections
+  // has already applied by the time anything asks.
+  if (cfg.timing.mode === 'total') {
+    const deadline = deadlineOf(rec, cfg, null);
+    if (deadline != null && now > deadline + cfg.graceSec * 1000) return 'expired';
+  }
   return 'running';
 }
 
 /** The response shape the client renders from. Deliberately small. */
 function view(rec, now, cfg, extra = {}) {
   const phase = phaseOf(rec, now, cfg);
-  const currentId = currentQuestionId(rec.answers, cfg.questions);
-  const ahead = remainingRange(currentId, cfg.questions, rec.answers.map((a) => a.id));
+  const frontierId = currentQuestionId(rec.answers, cfg.questions);
+  const ahead = remainingRange(frontierId, cfg.questions, rec.answers.map((a) => a.id));
   const answered = rec.answers.length;
+
+  // Where the candidate is LOOKING, which is the newest question unless they have stepped back.
+  // The frontier is unaffected by browsing: stepping back does not un-answer anything.
+  const looking = cfg.navigation.back && Number.isInteger(rec.cursor) && rec.cursor >= 0 && rec.cursor < answered
+    ? rec.cursor
+    : null;
+  const shownId = looking === null ? frontierId : rec.answers[looking].id;
+  const shownSection = sectionIdOf(questionById(shownId, cfg.questions), cfg);
 
   const out = {
     ok: true,
     phase,
     serverNow: now,
     candidate: { name: rec.name || null },
-    durationSec: cfg.durationSec,
+    // Null when there is no single whole-test clock, so the page knows not to draw one.
+    durationSec: cfg.timing.mode === 'total' ? cfg.timing.totalSec : null,
+    timing: { mode: cfg.timing.mode },
+    navigation: { back: cfg.navigation.back, edit: cfg.navigation.edit },
+    viewingIndex: looking,
+    canGoBack: cfg.navigation.back && (looking === null ? answered > 0 : looking > 0),
+    canGoForward: looking !== null,
     // Null when the routes ahead differ in length. The range is sent alongside so a page can
     // still say something true, like "between 5 and 7 questions", instead of inventing a number.
     total: ahead.certain ? answered + ahead.max : null,
     totalRange: { min: answered + ahead.min, max: answered + ahead.max, certain: ahead.certain },
     answered,
     ranOut: !!rec.ranOut,
-    blockPaste: INTEGRITY.blockPaste,
+    blockPaste: cfg.integrity.blockPaste,
     allowSelfReset: cfg.allowSelfReset,
     ...extra,
   };
-  if (rec.startedAt) out.deadline = deadlineOf(rec, cfg);
+
+  const deadline = deadlineOf(rec, cfg, shownSection);
+  if (deadline != null) out.deadline = deadline;
+  if (cfg.timing.mode === 'section') out.clockFor = shownSection;
+
   if (phase === 'running') {
-    out.question = publicQuestion(currentId, rec.answers, cfg);
-    out.progress = progressOf(rec.answers, currentId, cfg);
-    // A file already uploaded for this question, so refreshing or coming back on another device
-    // shows what is attached rather than an empty field the candidate would upload to twice.
-    if (rec.uploads && rec.uploads[currentId]) out.upload = rec.uploads[currentId];
+    if (looking === null) {
+      out.question = publicQuestion(frontierId, rec.answers, cfg);
+      // A file already uploaded for this question, so refreshing or coming back on another
+      // device shows what is attached rather than an empty field they would upload to twice.
+      if (rec.uploads && rec.uploads[frontierId]) out.upload = rec.uploads[frontierId];
+    } else {
+      // Looking back at something already submitted. The question is rebuilt from the answers
+      // that preceded it, so its numbering and its brief are what they were at the time.
+      const past = rec.answers[looking];
+      out.question = {
+        ...publicQuestion(past.id, rec.answers.slice(0, looking), cfg),
+        index: looking,
+        number: looking + 1,
+        isLast: false,
+      };
+      out.given = {
+        value: past.value,
+        format: past.format || 'text',
+        choiceIndex: Number.isInteger(past.choiceIndex) ? past.choiceIndex : null,
+        upload: past.upload || null,
+        skipped: !!past.skipped,
+      };
+      out.editable = cfg.navigation.edit;
+    }
+    out.progress = progressOf(rec.answers, frontierId, cfg);
   }
   // On the instructions screen there is no current question, but the shape of the task is
   // exactly what someone deciding whether to press start wants to see.
@@ -287,9 +512,26 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
   const rec = await load(store, token);
   if (!rec) return { ok: false, error: 'invalid_link', status: 404 };
 
+  // Per-part clocks are applied before anything reads the record, so every action below sees a
+  // session that already reflects the time that has passed since the last request.
+  if (settleSections(rec, now, cfg)) await store.put(KEY(token), rec);
+
   switch (body.action) {
     case 'state':
       return view(rec, now, cfg);
+
+    case 'back':
+    case 'forward': {
+      // Browsing is only ever browsing. It moves a cursor and touches nothing else, so even with
+      // this on, an answer is still only changed by `answer`, and only when editing is allowed.
+      if (!cfg.navigation.back) return view(rec, now, cfg, { rejected: 'no_back' });
+      const answered = rec.answers.length;
+      const at = Number.isInteger(rec.cursor) && rec.cursor < answered ? rec.cursor : answered;
+      const moved = body.action === 'back' ? at - 1 : at + 1;
+      rec.cursor = moved < 0 ? 0 : moved >= answered ? null : moved;
+      await store.put(KEY(token), rec);
+      return view(rec, now, cfg);
+    }
 
     case 'start': {
       // Idempotent by design: the second call returns the first call's deadline. This is
@@ -304,19 +546,35 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
 
     case 'answer': {
       const phase = phaseOf(rec, now, cfg);
-      if (phase !== 'running') return view(rec, now, cfg, { rejected: phase });
 
-      // The server decides which question is open; the client only gets to agree with it. Each
-      // check on its own kills going back and kills a duplicate submit from a double click or a
-      // retried request, because neither can be satisfied twice with the same values.
+      // The server decides which question may be answered; the client only gets to agree with
+      // it. Submitting at the frontier is the ordinary case. Submitting at an earlier index is
+      // a revision, which exists only when the test allows it.
+      const at = Number(body.index);
+      const revising = Number.isInteger(at) && at >= 0 && at < rec.answers.length;
+
+      // A new answer needs a question open. A revision does not: on a test that allows editing,
+      // reaching the end of the route is not the same as being finished with it, and a candidate
+      // who answers everything and then wants to improve an earlier answer should be able to,
+      // right up until the clock stops. Nothing survives expiry either way.
+      if (phase === 'expired') return view(rec, now, cfg, { rejected: phase });
+      if (!revising && phase !== 'running') return view(rec, now, cfg, { rejected: phase });
+
+      if (revising && !cfg.navigation.edit) return view(rec, now, cfg, { rejected: 'no_edit' });
+
       const currentId = currentQuestionId(rec.answers, cfg.questions);
-      if (!currentId) return view(rec, now, cfg, { rejected: 'done' });
-      if (Number(body.index) !== rec.answers.length) return view(rec, now, cfg, { rejected: 'out_of_order' });
-      if (body.questionId && String(body.questionId) !== currentId) {
+      if (!revising) {
+        if (!currentId) return view(rec, now, cfg, { rejected: 'done' });
+        if (at !== rec.answers.length) return view(rec, now, cfg, { rejected: 'out_of_order' });
+      }
+
+      const targetId = revising ? rec.answers[at].id : currentId;
+      if (body.questionId && String(body.questionId) !== targetId) {
         return view(rec, now, cfg, { rejected: 'out_of_order' });
       }
 
-      const q = questionById(currentId, cfg.questions);
+      const q = questionById(targetId, cfg.questions);
+      if (!q) return view(rec, now, cfg, { rejected: 'out_of_order' });
       const rich = q.type === 'rich';
       const max = q.maxLength || (rich || q.type === 'long' ? 2000 : 300);
 
@@ -329,8 +587,6 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         // The file is already stored. What is being submitted here is the name the candidate
         // gave it, which is the thing that makes a list of attachments readable to a reviewer.
         value = clamp(body.value, q.maxLength || 120).trim();
-        const attached = rec.uploads && rec.uploads[q.id];
-        if (q.required !== false && !attached) return view(rec, now, cfg, { rejected: 'no_file' });
       } else if (q.type === 'choice') {
         // Never trust a client-sent label; accept only an index into our own options. The index
         // is then kept alongside the label, because with branching it is the index that decides
@@ -350,7 +606,58 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
 
       // The client blocks this too, but a required question must not be skippable by anyone
       // hand-rolling a request. Optional questions accept an empty answer and move on.
-      if (q.required !== false && richIsEmpty(value)) return view(rec, now, cfg, { rejected: 'empty' });
+      // Text and file are checked against one requirement rather than two independent flags,
+      // because 'either' is not expressible as a pair of them: neither half is required on its
+      // own, but leaving both empty is not an answer.
+      const hasFile = !!(rec.uploads && rec.uploads[q.id]);
+      const hasText = !richIsEmpty(value);
+      const need = requireOf(q);
+      if ((need === 'file' || need === 'both') && !hasFile) return view(rec, now, cfg, { rejected: 'no_file' });
+      if ((need === 'text' || need === 'both') && !hasText) return view(rec, now, cfg, { rejected: 'empty' });
+      if (need === 'either' && !hasFile && !hasText) return view(rec, now, cfg, { rejected: 'need_one' });
+
+      if (revising) {
+        const previous = rec.answers[at];
+        const updated = {
+          ...previous,
+          value,
+          ...(choiceIndex === undefined ? {} : { choiceIndex }),
+          ...(rec.uploads && rec.uploads[q.id] ? { upload: rec.uploads[q.id] } : {}),
+          skipped: false,
+          revisedAt: now,
+          revisions: (previous.revisions || 0) + 1,
+        };
+
+        // A revision that changes the route cannot leave the answers after it standing: they
+        // belong to a branch this candidate is no longer on. Discarding them is the honest
+        // outcome, and it is destructive, so it needs saying yes to first.
+        const followed = rec.answers[at + 1] ? rec.answers[at + 1].id : null;
+        const nowLeadsTo = nextIdAfter(q, updated, cfg.questions);
+        if (followed && nowLeadsTo !== followed) {
+          if (!body.confirmDiscard) {
+            return view(rec, now, cfg, {
+              rejected: 'would_discard',
+              wouldDiscard: rec.answers.length - at - 1,
+            });
+          }
+          rec.answers = rec.answers.slice(0, at).concat(updated);
+          // Answers after this one are gone, so anything they had attached is stale too.
+          for (const key of Object.keys(rec.uploads || {})) {
+            if (!rec.answers.some((a) => a.id === key) && key !== q.id) delete rec.uploads[key];
+          }
+        } else {
+          rec.answers[at] = updated;
+        }
+
+        // Discarding answers can reopen a test that had finished.
+        if (currentQuestionId(rec.answers, cfg.questions)) {
+          rec.finishedAt = null;
+          rec.ranOut = false;
+        }
+        rec.cursor = at + 1 < rec.answers.length ? at + 1 : null;
+        await store.put(KEY(token), rec);
+        return view(rec, now, cfg, { revised: true });
+      }
 
       const prevAt = rec.answers.length ? rec.answers[rec.answers.length - 1].at : rec.startedAt;
       rec.answers.push({
@@ -372,6 +679,11 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         pastes: Math.max(0, Math.min(99, Number(body.pastes) || 0)),
         blurs: Math.max(0, Math.min(99, Number(body.blurs) || 0)),
       });
+      // That answer may have carried the candidate into a new part, and a part's clock starts
+      // when they arrive in it. Registering it here, before the save, is what stops Part 2's
+      // limit being measured from the beginning of the sitting.
+      settleSections(rec, now, cfg);
+
       // The route decides when the test is over, not a count: two candidates sitting the same
       // test can finish after different numbers of questions.
       if (!currentQuestionId(rec.answers, cfg.questions)) rec.finishedAt = now;
@@ -393,7 +705,7 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       }
 
       const q = questionById(currentId, cfg.questions);
-      if (!q || q.type !== 'upload') return view(rec, now, cfg, { rejected: 'not_an_upload' });
+      if (!q || attachmentOf(q) === 'none') return view(rec, now, cfg, { rejected: 'not_an_upload' });
 
       // KV has no concept of an attachment. Refusing clearly beats a stack trace, though the
       // real defence is the startup check that stops a spec with uploads running on such a store.
@@ -540,7 +852,7 @@ async function register(store, body, now, cfg) {
  * through a candidate's sitting.
  */
 export function readiness(store, cfg = config()) {
-  const needsFiles = cfg.questions.some((q) => q.type === 'upload');
+  const needsFiles = cfg.questions.some((q) => attachmentOf(q) !== 'none');
   if (needsFiles && typeof store.putFile !== 'function') {
     return {
       ok: false,
@@ -663,7 +975,8 @@ export function toCsv(rows) {
         r.name, r.email, r.phase, iso(r.startedAt), iso(r.finishedAt), r.ranOut ? 'yes' : 'no',
         // Formatted answers flatten to text with `##` and `-` markers kept, so the structure the
         // candidate chose survives into a spreadsheet cell.
-        a.index + 1, a.id || '', a.prompt, richToText(a.value),
+        a.index + 1, a.id || '', a.prompt,
+        a.skipped ? '(not reached: time ran out on this part)' : richToText(a.value),
         a.upload ? a.upload.filename : '', a.upload ? Math.round(a.upload.size / 1000) : '',
         Math.round(a.msSpent / 1000), richWordCount(a.value),
         a.pastes, a.blurs,
