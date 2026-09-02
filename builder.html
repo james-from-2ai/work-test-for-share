@@ -1,0 +1,1074 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Work test builder</title>
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f5f4f'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M16 10.5V16l3.6 2.6' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+<style>
+  body { margin: 0; }
+  .top {
+    padding: 0.6rem 1rem; background: var(--card); border-bottom: 1px solid var(--line);
+    display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; position: sticky; top: 0; z-index: 5;
+  }
+  .top h1 { font-size: 1rem; margin: 0; font-weight: 650; }
+  .top .muted { font-size: 0.8rem; }
+  .top .spacer { flex: 1; }
+
+  .grid { display: grid; grid-template-columns: 15rem minmax(20rem, 1fr) minmax(22rem, 1.1fr); gap: 0; align-items: start; }
+  @media (max-width: 62rem) { .grid { grid-template-columns: 1fr; } }
+
+  .pane { padding: 0.9rem 1rem; min-height: calc(100vh - 3.2rem); }
+  .pane + .pane { border-left: 1px solid var(--line); }
+  .pane.right { position: sticky; top: 3.2rem; max-height: calc(100vh - 3.2rem); overflow: auto; }
+
+  h2.sec { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 1.2rem 0 0.45rem; }
+  h2.sec:first-child { margin-top: 0; }
+
+  .outline-item {
+    display: flex; gap: 0.4rem; align-items: center; width: 100%; text-align: left;
+    font: inherit; font-size: 0.83rem; background: none; border: 1px solid transparent;
+    border-radius: 6px; padding: 0.35rem 0.45rem; cursor: pointer; color: inherit;
+  }
+  .outline-item:hover { background: rgba(127,127,127,0.09); }
+  .outline-item.on { background: var(--accent); color: var(--accent-ink); }
+  .outline-item .qid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; opacity: 0.75; }
+  .outline-item .grow { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .outline-item .warn-dot { color: var(--danger); font-weight: 700; }
+  .branchy { font-size: 0.7rem; opacity: 0.7; }
+
+  .f { display: block; margin-bottom: 0.7rem; }
+  .f-l { display: block; font-size: 0.75rem; font-weight: 650; color: var(--muted); margin-bottom: 0.2rem; }
+  .f-h { display: block; font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; }
+  .f input[type=text], .f input[type=number], .f textarea, .f select {
+    width: 100%; font: inherit; font-size: 0.85rem; padding: 0.35rem 0.45rem;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: inherit;
+  }
+  .f textarea { resize: vertical; }
+  .f.inline { display: flex; align-items: center; gap: 0.4rem; }
+  .f.inline .f-l { margin: 0; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+
+  .btn { font: inherit; font-size: 0.8rem; background: var(--card); border: 1px solid var(--line);
+         border-radius: 6px; padding: 0.3rem 0.6rem; color: inherit; cursor: pointer; }
+  .btn:hover { border-color: var(--muted); }
+  .btn.p { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.d { color: var(--danger); }
+  .btns { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+  .opt-row { border: 1px solid var(--line); border-radius: 8px; padding: 0.55rem; margin-bottom: 0.5rem; background: var(--card); }
+  .opt-row .head { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.4rem; }
+  .opt-row .head .n { font-size: 0.72rem; color: var(--muted); font-weight: 700; }
+
+  .tabs { display: flex; gap: 0.3rem; margin-bottom: 0.7rem; flex-wrap: wrap; }
+  .tab { font: inherit; font-size: 0.8rem; background: none; border: 1px solid var(--line);
+         border-radius: 999px; padding: 0.25rem 0.7rem; cursor: pointer; color: inherit; }
+  .tab.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .tab .count { font-weight: 700; }
+
+  /* --- branch map --- */
+  .map-wrap { position: relative; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  .map { position: relative; display: flex; gap: 3.5rem; padding: 1rem 1.2rem; min-width: min-content; }
+  .map-col { display: flex; flex-direction: column; gap: 1rem; min-width: 9.5rem; }
+  .map-col > .col-h { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .node {
+    position: relative; z-index: 2; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--card); padding: 0.45rem 0.55rem; cursor: pointer; width: 9.5rem;
+  }
+  .node:hover { border-color: var(--accent); }
+  .node.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+  .node .nid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.7rem; color: var(--muted); }
+  .node .npr { font-size: 0.76rem; line-height: 1.3; margin-top: 0.15rem;
+               display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .node .ntag { font-size: 0.65rem; margin-top: 0.25rem; color: var(--muted); }
+  .node.choice { border-left: 3px solid var(--warn); }
+  .node.end { border-left: 3px solid var(--accent); }
+  .node.orphan { border-style: dashed; color: var(--muted); }
+  .node.missing { border-color: var(--danger); color: var(--danger); border-style: dashed; }
+  .map svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+  .edge-label {
+    position: absolute; z-index: 3; font-size: 0.65rem; background: var(--bg);
+    padding: 0 0.2rem; border-radius: 3px; color: var(--muted); pointer-events: none;
+    max-width: 8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .routes { margin-top: 0.8rem; font-size: 0.8rem; }
+  .routes ol { padding-left: 1.2rem; margin: 0.3rem 0 0; }
+  .routes li { margin-bottom: 0.2rem; }
+  .routes code { font-size: 0.75rem; }
+
+  /* --- problems --- */
+  .prob { display: flex; gap: 0.45rem; font-size: 0.8rem; padding: 0.35rem 0; border-bottom: 1px solid var(--line); }
+  .prob:last-child { border-bottom: 0; }
+  .prob .lvl { font-weight: 700; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; padding-top: 0.1rem; }
+  .prob.error .lvl { color: var(--danger); }
+  .prob.warning .lvl { color: var(--warn); }
+  .ok-line { color: var(--accent); font-size: 0.85rem; font-weight: 600; }
+
+  /* --- preview --- */
+  .pv { border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 0.9rem; }
+  .pv .crumbs { font-size: 0.72rem; color: var(--muted); margin-bottom: 0.6rem; }
+  .pv h3 { font-size: 1rem; margin: 0 0 0.3rem; }
+  .pv .ctx { font-size: 0.82rem; color: var(--muted); margin: 0 0 0.7rem; }
+  .pv .pv-brief { border-left: 2px solid var(--line); padding-left: 0.6rem; margin-bottom: 0.7rem; font-size: 0.8rem; }
+  .pv .pv-brief figcaption { font-weight: 650; font-size: 0.75rem; color: var(--muted); }
+  .pv .pv-brief figure { margin: 0.4rem 0; }
+  .pv .pv-opt { display: block; width: 100%; text-align: left; margin-bottom: 0.35rem; }
+  .pv .fake { border: 1px dashed var(--line); border-radius: 6px; padding: 0.6rem; color: var(--muted); font-size: 0.8rem; margin-bottom: 0.6rem; }
+
+  textarea.json { width: 100%; min-height: 24rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                  font-size: 0.75rem; border: 1px solid var(--line); border-radius: 6px; padding: 0.5rem;
+                  background: var(--card); color: inherit; }
+  .hint { font-size: 0.78rem; color: var(--muted); }
+  .hint code { font-size: 0.75rem; background: rgba(127,127,127,0.12); padding: 0.05rem 0.25rem; border-radius: 3px; }
+  .banner-note {
+    font-size: 0.78rem; padding: 0.5rem 0.7rem; border-radius: 6px; margin-bottom: 0.8rem;
+    background: rgba(127,127,127,0.09); border: 1px solid var(--line);
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Work test builder</h1>
+  <span class="muted" id="saved">Draft saved in this browser</span>
+  <span class="spacer"></span>
+  <div class="btns">
+    <button class="btn" id="load-example">Load example</button>
+    <button class="btn" id="import">Import JSON</button>
+    <button class="btn p" id="download">Download spec</button>
+  </div>
+</header>
+
+<div class="grid">
+  <!-- outline -->
+  <nav class="pane" id="outline"></nav>
+  <!-- detail editor -->
+  <main class="pane" id="detail"></main>
+  <!-- inspector -->
+  <aside class="pane right" id="inspector"></aside>
+</div>
+
+<input type="file" id="file" accept="application/json,.json" hidden>
+
+<script type="module">
+/**
+ * The authoring tool. A non-technical colleague writes the whole test here, watches the routes
+ * as they build them, walks their own draft as a candidate would, and downloads one JSON file.
+ *
+ * Two decisions shape everything below.
+ *
+ * It validates with the SAME module the server runs, imported from assets/wt-flow.mjs. A second
+ * copy of "where does this branch go" written for the browser would drift from the real one, and
+ * the failure mode of that drift is the worst available: an author sees a flow marked valid and a
+ * candidate walks into a dead end, on a clock, in a hiring assessment.
+ *
+ * It cannot publish. Downloading a spec and deploying it are separate acts, deliberately, because
+ * this page has no authentication of any kind and the thing it would be publishing is a live
+ * hiring assessment. `node tools/spec-apply.mjs <file>` turns a downloaded spec into the
+ * committed questions file, so shipping is a reviewed diff rather than a button.
+ */
+
+import {
+  validateFlow, currentQuestionId, questionById, outgoingIds, optionLabels, routesFrom,
+} from './assets/wt-flow.mjs';
+
+/* ------------------------------------------------------------------- state ---------- */
+
+const LS_KEY = 'work-test-builder-draft';
+
+const STARTER = () => ({
+  durationSec: 5400,
+  notes: '',
+  sections: [
+    { id: 'part1', label: 'Part 1', summary: 'Analyse the data and write up', recommendedMin: 60 },
+    { id: 'part2', label: 'Part 2', summary: 'Reply to your manager', recommendedMin: 30 },
+  ],
+  briefs: {
+    setup: {
+      section: 'Part 1 of 2',
+      heading: 'The situation',
+      blocks: [{ type: 'p', text: 'Describe the scenario the candidate is walking into.' }],
+    },
+  },
+  questions: [
+    {
+      id: 'first_question', section: 'part1', brief: 'setup', type: 'rich',
+      prompt: 'What do you recommend, and why?', maxLength: 1200,
+    },
+  ],
+});
+
+let spec = load() || STARTER();
+let selected = firstId();
+let tab = 'map';
+let walk = []; // the preview's answers so far
+
+function firstId() { return spec.questions.length ? spec.questions[0].id : null; }
+
+function load() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function save() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(spec));
+    note('Draft saved in this browser');
+  } catch {
+    // Storage full or blocked. Say so rather than letting someone lose an afternoon's work
+    // believing it was being kept.
+    note('Cannot save in this browser. Download the spec before you close this tab.', true);
+  }
+}
+
+function note(text, bad = false) {
+  const n = $('#saved');
+  n.textContent = text;
+  n.style.color = bad ? 'var(--danger)' : '';
+}
+
+/* ------------------------------------------------------------------ helpers --------- */
+
+const $ = (s, r = document) => r.querySelector(s);
+const clone = (v) => JSON.parse(JSON.stringify(v));
+const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+
+/** Builds an element. Text always goes in as text, never as markup. */
+function el(tag, props = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === 'class') n.className = v;
+    else if (k === 'text') n.textContent = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? '' : String(v));
+  }
+  for (const kid of kids.flat()) if (kid !== null && kid !== undefined) n.append(kid);
+  return n;
+}
+
+function field(label, control, hint) {
+  return el('label', { class: 'f' },
+    el('span', { class: 'f-l', text: label }),
+    control,
+    hint ? el('span', { class: 'f-h', text: hint }) : null);
+}
+
+function input(value, oninput, attrs = {}) {
+  const i = el('input', { type: 'text', ...attrs });
+  i.value = value == null ? '' : value;
+  i.addEventListener('input', () => oninput(i.value));
+  return i;
+}
+
+function area(value, oninput, rows = 3) {
+  const t = el('textarea', { rows });
+  t.value = value == null ? '' : value;
+  t.addEventListener('input', () => oninput(t.value));
+  return t;
+}
+
+function number(value, oninput, attrs = {}) {
+  const i = el('input', { type: 'number', ...attrs });
+  i.value = value == null ? '' : value;
+  i.addEventListener('input', () => oninput(i.value === '' ? undefined : Number(i.value)));
+  return i;
+}
+
+/** `choices` is [[value, label], ...]. Values are strings; the caller maps them back. */
+function select(choices, value, onchange) {
+  const s = el('select');
+  for (const [v, label] of choices) {
+    const o = el('option', { value: v, text: label });
+    if (v === value) o.selected = true;
+    s.append(o);
+  }
+  s.addEventListener('change', () => onchange(s.value));
+  return s;
+}
+
+function checkbox(checked, onchange, label) {
+  const box = el('input', { type: 'checkbox' });
+  box.checked = !!checked;
+  box.addEventListener('change', () => onchange(box.checked));
+  return el('label', { class: 'f inline' }, box, el('span', { class: 'f-l', text: label }));
+}
+
+/**
+ * The three things a destination can be, in one control. `undefined` is the important one: it
+ * means "fall through to the next question in the list", which is what keeps a spec with no
+ * branching behaving exactly like a flat list.
+ */
+const DEST_FALL = ' fall';
+const DEST_END = ' end';
+
+function destSelect(current, onchange, { fallLabel } = {}) {
+  const choices = [
+    [DEST_FALL, fallLabel || 'Continue to the next question in the list'],
+    [DEST_END, 'End the test here'],
+    ...spec.questions.map((q) => [q.id, `Go to: ${q.id}`]),
+  ];
+  const value = current === undefined ? DEST_FALL : current === null ? DEST_END : current;
+  // A destination pointing at a question that no longer exists must stay visible, or deleting a
+  // question would silently repoint every branch that referenced it.
+  if (typeof current === 'string' && !spec.questions.some((q) => q.id === current)) {
+    choices.push([current, `Missing: ${current}`]);
+  }
+  return select(choices, value, (v) => {
+    onchange(v === DEST_FALL ? undefined : v === DEST_END ? null : v);
+  });
+}
+
+/** Assigns a destination, deleting the key entirely for "fall through". */
+function setDest(target, key, value) {
+  if (value === undefined) delete target[key];
+  else target[key] = value;
+}
+
+/* ------------------------------------------------------------------ mutation -------- */
+
+function touch({ redrawDetail = false, redrawOutline = true } = {}) {
+  save();
+  if (redrawOutline) renderOutline();
+  if (redrawDetail) renderDetail();
+  renderInspector();
+}
+
+/** Renaming an id rewrites every branch that pointed at it, so a rename cannot break a route. */
+function renameQuestion(oldId, newId) {
+  if (!newId || newId === oldId) return;
+  for (const q of spec.questions) {
+    if (q.id === oldId) q.id = newId;
+    if (q.next === oldId) q.next = newId;
+    for (const o of q.options || []) if (o && typeof o === 'object' && o.next === oldId) o.next = newId;
+  }
+  if (selected === oldId) selected = newId;
+  walk = walk.map((a) => (a.id === oldId ? { ...a, id: newId } : a));
+}
+
+function uniqueId(base) {
+  let id = slug(base) || 'question';
+  let n = 2;
+  while (spec.questions.some((q) => q.id === id)) id = `${slug(base) || 'question'}_${n++}`;
+  return id;
+}
+
+function addQuestion() {
+  const id = uniqueId('new_question');
+  spec.questions.push({
+    id,
+    section: spec.sections[0]?.id || 'part1',
+    type: 'rich',
+    prompt: '',
+    maxLength: 1200,
+  });
+  selected = id;
+  walk = [];
+  touch({ redrawDetail: true });
+}
+
+function deleteQuestion(id) {
+  const q = spec.questions.find((x) => x.id === id);
+  const pointedAt = spec.questions.filter((x) => x.id !== id
+    && (x.next === id || (x.options || []).some((o) => o && typeof o === 'object' && o.next === id)));
+  const warning = pointedAt.length
+    ? `Delete "${id}"? ${pointedAt.length} branch${pointedAt.length === 1 ? '' : 'es'} point at it and will be left dangling, which the problems list will flag.`
+    : `Delete "${id}"?`;
+  if (!confirm(warning)) return;
+  spec.questions = spec.questions.filter((x) => x.id !== id);
+  if (selected === id) selected = firstId();
+  walk = [];
+  touch({ redrawDetail: true });
+}
+
+function moveQuestion(id, by) {
+  const i = spec.questions.findIndex((q) => q.id === id);
+  const j = i + by;
+  if (i < 0 || j < 0 || j >= spec.questions.length) return;
+  const [q] = spec.questions.splice(i, 1);
+  spec.questions.splice(j, 0, q);
+  walk = [];
+  touch({ redrawDetail: true });
+}
+
+/* ------------------------------------------------------------------ outline --------- */
+
+function renderOutline() {
+  const problems = review();
+  const badIds = new Set(problems.filter((p) => p.level === 'error' && p.id).map((p) => p.id));
+  const root = $('#outline');
+  root.replaceChildren();
+
+  root.append(el('h2', { class: 'sec', text: 'Test' }));
+  for (const [key, label] of [['settings', 'Settings and parts'], ['briefs', 'Scenario briefs']]) {
+    root.append(el('button', {
+      class: `outline-item ${selected === key ? 'on' : ''}`,
+      onclick: () => { selected = key; touch({ redrawDetail: true }); },
+    }, el('span', { class: 'grow', text: label })));
+  }
+
+  root.append(el('h2', { class: 'sec', text: `Questions (${spec.questions.length})` }));
+  for (const q of spec.questions) {
+    const branches = (q.options || []).filter((o) => o && typeof o === 'object' && o.next !== undefined).length;
+    root.append(el('button', {
+      class: `outline-item ${selected === q.id ? 'on' : ''}`,
+      onclick: () => { selected = q.id; touch({ redrawDetail: true }); },
+    },
+      badIds.has(q.id) ? el('span', { class: 'warn-dot', text: '!' }) : null,
+      el('span', { class: 'grow', text: q.prompt || '(no prompt yet)' }),
+      branches ? el('span', { class: 'branchy', text: `⑂${branches}` }) : null));
+  }
+  root.append(el('div', { class: 'btns', style: 'margin-top:0.6rem' },
+    el('button', { class: 'btn', onclick: addQuestion, text: '+ Add question' })));
+}
+
+/* ------------------------------------------------------------------- detail --------- */
+
+function renderDetail() {
+  const root = $('#detail');
+  root.replaceChildren();
+  if (selected === 'settings') return renderSettings(root);
+  if (selected === 'briefs') return renderBriefs(root);
+
+  const q = spec.questions.find((x) => x.id === selected);
+  if (!q) {
+    root.append(el('p', { class: 'muted', text: 'Pick something on the left, or add a question.' }));
+    return;
+  }
+  renderQuestionEditor(root, q);
+}
+
+function renderSettings(root) {
+  root.append(el('h2', { class: 'sec', text: 'Settings' }));
+  root.append(field('How long is the whole test, in minutes?',
+    number(Math.round((spec.durationSec || 0) / 60), (v) => { spec.durationSec = Math.max(1, Number(v) || 1) * 60; touch(); }, { min: 1 }),
+    'The clock runs on the server. It does not stop, and refreshing does not reset it.'));
+
+  root.append(field('Notes for whoever maintains this test',
+    area(spec.notes, (v) => { spec.notes = v; touch(); }, 4),
+    'Written into the header of the generated file, so it survives. Where the task came from, what is deliberately ambiguous, anything the next person would otherwise have to guess. Candidates never see this.'));
+
+  root.append(el('h2', { class: 'sec', text: 'Parts' }));
+  root.append(el('p', { class: 'hint', text: 'Recommended minutes decide how the progress bar is shared out, so they should add up to roughly the total above.' }));
+
+  spec.sections.forEach((s, i) => {
+    const box = el('div', { class: 'opt-row' });
+    box.append(el('div', { class: 'head' },
+      el('span', { class: 'n', text: `Part ${i + 1}` }),
+      el('span', { class: 'spacer', style: 'flex:1' }),
+      el('button', { class: 'btn', text: '↑', onclick: () => { if (i > 0) { [spec.sections[i - 1], spec.sections[i]] = [spec.sections[i], spec.sections[i - 1]]; touch({ redrawDetail: true }); } } }),
+      el('button', { class: 'btn', text: '↓', onclick: () => { if (i < spec.sections.length - 1) { [spec.sections[i + 1], spec.sections[i]] = [spec.sections[i], spec.sections[i + 1]]; touch({ redrawDetail: true }); } } }),
+      el('button', {
+        class: 'btn d', text: 'Remove',
+        onclick: () => {
+          const used = spec.questions.filter((q) => q.section === s.id).length;
+          if (used && !confirm(`${used} question${used === 1 ? '' : 's'} sit in "${s.label}". Remove it anyway? Those questions will fall back to the first part.`)) return;
+          spec.sections.splice(i, 1);
+          touch({ redrawDetail: true });
+        },
+      })));
+    box.append(el('div', { class: 'row2' },
+      field('Label', input(s.label, (v) => { s.label = v; touch(); })),
+      field('Recommended minutes', number(s.recommendedMin, (v) => { s.recommendedMin = Number(v) || 0; touch(); }, { min: 0 }))));
+    box.append(field('Summary', input(s.summary, (v) => { s.summary = v; touch(); }), 'Shown under the progress bar, for example "Analyse the data and write up".'));
+    box.append(field('Id', input(s.id, (v) => {
+      const old = s.id;
+      const next = slug(v) || old;
+      s.id = next;
+      for (const q of spec.questions) if (q.section === old) q.section = next;
+      touch();
+    }), 'Used to tie questions to this part. Changing it moves every question that was in it.'));
+    root.append(box);
+  });
+
+  root.append(el('div', { class: 'btns' }, el('button', {
+    class: 'btn', text: '+ Add part',
+    onclick: () => {
+      const id = `part${spec.sections.length + 1}`;
+      spec.sections.push({ id, label: `Part ${spec.sections.length + 1}`, summary: '', recommendedMin: 30 });
+      touch({ redrawDetail: true });
+    },
+  })));
+}
+
+function renderBriefs(root) {
+  root.append(el('h2', { class: 'sec', text: 'Scenario briefs' }));
+  root.append(el('p', { class: 'hint', text: 'A brief is the reference material that stays on screen for every question that uses it: the scenario, a Slack message, an email, a link to the data. A question with no brief shows none.' }));
+
+  for (const [key, brief] of Object.entries(spec.briefs)) {
+    const box = el('div', { class: 'opt-row' });
+    box.append(el('div', { class: 'head' },
+      el('span', { class: 'n', text: key }),
+      el('span', { style: 'flex:1' }),
+      el('button', {
+        class: 'btn d', text: 'Remove',
+        onclick: () => {
+          const used = spec.questions.filter((q) => q.brief === key).length;
+          if (used && !confirm(`${used} question${used === 1 ? '' : 's'} use this brief and will lose it. Remove anyway?`)) return;
+          delete spec.briefs[key];
+          for (const q of spec.questions) if (q.brief === key) delete q.brief;
+          touch({ redrawDetail: true });
+        },
+      })));
+
+    box.append(el('div', { class: 'row2' },
+      field('Eyebrow', input(brief.section, (v) => { brief.section = v; touch(); }), 'For example "Part 1 of 2".'),
+      field('Heading', input(brief.heading, (v) => { brief.heading = v; touch(); }))));
+
+    brief.blocks = brief.blocks || [];
+    brief.blocks.forEach((b, bi) => {
+      const bb = el('div', { class: 'opt-row', style: 'background:transparent' });
+      bb.append(el('div', { class: 'head' },
+        el('span', { class: 'n', text: b.type === 'p' ? 'Paragraph' : b.type === 'quote' ? 'Quoted message' : 'Link to data' }),
+        el('span', { style: 'flex:1' }),
+        el('button', { class: 'btn', text: '↑', onclick: () => { if (bi > 0) { [brief.blocks[bi - 1], brief.blocks[bi]] = [brief.blocks[bi], brief.blocks[bi - 1]]; touch({ redrawDetail: true }); } } }),
+        el('button', { class: 'btn', text: '↓', onclick: () => { if (bi < brief.blocks.length - 1) { [brief.blocks[bi + 1], brief.blocks[bi]] = [brief.blocks[bi], brief.blocks[bi + 1]]; touch({ redrawDetail: true }); } } }),
+        el('button', { class: 'btn d', text: '✕', onclick: () => { brief.blocks.splice(bi, 1); touch({ redrawDetail: true }); } })));
+
+      if (b.type === 'p') {
+        bb.append(field('Text', area(b.text, (v) => { b.text = v; touch(); }, 3)));
+      } else if (b.type === 'quote') {
+        bb.append(field('Who and when', input(b.label, (v) => { b.label = v; touch(); }), 'For example "Slack from your manager, 9:05am".'));
+        bb.append(field('Message', area(b.text, (v) => { b.text = v; touch(); }, 4)));
+        bb.append(field('Numbered points (one per line, optional)',
+          area((b.list || []).join('\n'), (v) => {
+            const lines = v.split('\n').map((x) => x.trim()).filter(Boolean);
+            if (lines.length) b.list = lines; else delete b.list;
+            touch();
+          }, 3)));
+        bb.append(field('Closing line (optional)', input(b.after, (v) => { if (v) b.after = v; else delete b.after; touch(); })));
+      } else {
+        bb.append(field('Button text', input(b.label, (v) => { b.label = v; touch(); })));
+        bb.append(field('URL', input(b.url, (v) => { b.url = v; touch(); }),
+          'Must start with https://. This becomes a real link on the candidate page, which is why anything else is refused.'));
+      }
+      box.append(bb);
+    });
+
+    box.append(el('div', { class: 'btns' },
+      el('button', { class: 'btn', text: '+ Paragraph', onclick: () => { brief.blocks.push({ type: 'p', text: '' }); touch({ redrawDetail: true }); } }),
+      el('button', { class: 'btn', text: '+ Quoted message', onclick: () => { brief.blocks.push({ type: 'quote', label: '', text: '' }); touch({ redrawDetail: true }); } }),
+      el('button', { class: 'btn', text: '+ Link to data', onclick: () => { brief.blocks.push({ type: 'link', label: 'Open the data', url: 'https://' }); touch({ redrawDetail: true }); } })));
+    root.append(box);
+  }
+
+  root.append(el('div', { class: 'btns' }, el('button', {
+    class: 'btn', text: '+ Add brief',
+    onclick: () => {
+      let key = 'brief';
+      let n = 2;
+      while (spec.briefs[key]) key = `brief${n++}`;
+      spec.briefs[key] = { section: '', heading: '', blocks: [] };
+      touch({ redrawDetail: true });
+    },
+  })));
+}
+
+const TYPES = [
+  ['rich', 'Formatted answer (headings, bold, lists)'],
+  ['long', 'Plain long answer'],
+  ['short', 'Single line'],
+  ['choice', 'Multiple choice (can branch)'],
+];
+
+function renderQuestionEditor(root, q) {
+  const i = spec.questions.indexOf(q);
+  root.append(el('div', { class: 'head', style: 'display:flex;gap:0.4rem;align-items:center;margin-bottom:0.8rem' },
+    el('h2', { class: 'sec', style: 'margin:0;flex:1', text: `Question ${i + 1} of ${spec.questions.length}` }),
+    el('button', { class: 'btn', text: '↑', onclick: () => moveQuestion(q.id, -1) }),
+    el('button', { class: 'btn', text: '↓', onclick: () => moveQuestion(q.id, 1) }),
+    el('button', { class: 'btn d', text: 'Delete', onclick: () => deleteQuestion(q.id) })));
+
+  root.append(field('The question', area(q.prompt, (v) => { q.prompt = v; touch(); }, 2)));
+  root.append(field('Extra guidance (optional)', area(q.context, (v) => { if (v) q.context = v; else delete q.context; touch(); }, 2),
+    'Sits under the question in smaller text. Good for saying what a complete answer covers.'));
+
+  root.append(el('div', { class: 'row2' },
+    field('Answer type', select(TYPES, q.type, (v) => {
+      q.type = v;
+      if (v === 'choice' && !Array.isArray(q.options)) q.options = [{ label: 'First option' }, { label: 'Second option' }];
+      if (v !== 'choice') delete q.options;
+      touch({ redrawDetail: true });
+    })),
+    field('Which part', select(spec.sections.map((s) => [s.id, s.label]), q.section, (v) => { q.section = v; touch(); }))));
+
+  root.append(el('div', { class: 'row2' },
+    field('Reference brief', select([['', 'None'], ...Object.keys(spec.briefs).map((k) => [k, k])], q.brief || '', (v) => {
+      if (v) q.brief = v; else delete q.brief;
+      touch();
+    })),
+    q.type === 'choice' ? el('span') : field('Character limit', number(q.maxLength, (v) => { q.maxLength = v; touch(); }, { min: 50 }))));
+
+  root.append(checkbox(q.required !== false, (v) => {
+    if (v) delete q.required; else q.required = false;
+    touch();
+  }, 'An answer is required to continue'));
+
+  if (q.type !== 'choice') {
+    root.append(field('Placeholder text (optional)', input(q.placeholder, (v) => { if (v) q.placeholder = v; else delete q.placeholder; touch(); })));
+  }
+
+  root.append(el('h2', { class: 'sec', text: 'Where this leads' }));
+
+  if (q.type === 'choice') {
+    root.append(el('p', { class: 'hint', text: 'Each option can send the candidate somewhere different. They never see where an option leads, only its wording.' }));
+    q.options = q.options || [];
+    q.options.forEach((raw, oi) => {
+      // Plain strings are still a valid shape; editing one here upgrades it to an object.
+      if (typeof raw === 'string') q.options[oi] = { label: raw };
+      const o = q.options[oi];
+      const box = el('div', { class: 'opt-row' });
+      box.append(el('div', { class: 'head' },
+        el('span', { class: 'n', text: `Option ${oi + 1}` }),
+        el('span', { style: 'flex:1' }),
+        el('button', { class: 'btn', text: '↑', onclick: () => { if (oi > 0) { [q.options[oi - 1], q.options[oi]] = [q.options[oi], q.options[oi - 1]]; touch({ redrawDetail: true }); } } }),
+        el('button', { class: 'btn', text: '↓', onclick: () => { if (oi < q.options.length - 1) { [q.options[oi + 1], q.options[oi]] = [q.options[oi], q.options[oi + 1]]; touch({ redrawDetail: true }); } } }),
+        el('button', { class: 'btn d', text: '✕', onclick: () => { q.options.splice(oi, 1); touch({ redrawDetail: true }); } })));
+      box.append(field('What the candidate sees', input(o.label, (v) => { o.label = v; touch(); })));
+      box.append(field('Then go to', destSelect(o.next, (v) => { setDest(o, 'next', v); touch({ redrawDetail: true }); })));
+      root.append(box);
+    });
+    root.append(el('div', { class: 'btns' }, el('button', {
+      class: 'btn', text: '+ Add option',
+      onclick: () => { q.options.push({ label: '' }); touch({ redrawDetail: true }); },
+    })));
+    root.append(field('If an option has no destination of its own',
+      destSelect(q.next, (v) => { setDest(q, 'next', v); touch({ redrawDetail: true }); })));
+  } else {
+    root.append(field('After this question', destSelect(q.next, (v) => { setDest(q, 'next', v); touch({ redrawDetail: true }); })));
+  }
+}
+
+/* ---------------------------------------------------------------- inspector --------- */
+
+function renderInspector() {
+  const root = $('#inspector');
+  root.replaceChildren();
+  const problems = review();
+  const errors = problems.filter((p) => p.level === 'error').length;
+
+  const tabs = el('div', { class: 'tabs' });
+  for (const [key, label] of [['map', 'Branch map'], ['preview', 'Walk it through'], ['problems', `Problems`], ['json', 'Spec file']]) {
+    tabs.append(el('button', {
+      class: `tab ${tab === key ? 'on' : ''}`,
+      onclick: () => { tab = key; renderInspector(); },
+    }, el('span', { text: label }),
+      key === 'problems' && problems.length ? el('span', { class: 'count', text: ` ${problems.length}` }) : null));
+  }
+  root.append(tabs);
+
+  if (errors && tab !== 'problems') {
+    root.append(el('div', { class: 'banner-note' },
+      el('strong', { text: `${errors} problem${errors === 1 ? '' : 's'} to fix. ` }),
+      el('span', { text: 'This spec will not run until they are resolved.' })));
+  }
+
+  if (tab === 'map') renderMap(root);
+  else if (tab === 'preview') renderPreview(root);
+  else if (tab === 'problems') renderProblems(root, problems);
+  else renderJson(root);
+}
+
+/* ------------------------------------------------------------------ the map --------- */
+
+function renderMap(root) {
+  if (!spec.questions.length) {
+    root.append(el('p', { class: 'muted', text: 'No questions yet.' }));
+    return;
+  }
+
+  // Depth is the longest path from the start, so a question never sits to the left of something
+  // that leads to it. The guard is what stops a loop running away.
+  const depth = new Map();
+  const setDepth = (id, d) => {
+    if (id == null || d > spec.questions.length + 1) return;
+    const q = questionById(id, spec.questions);
+    if (!q) return;
+    if ((depth.get(id) ?? -1) >= d) return;
+    depth.set(id, d);
+    for (const n of outgoingIds(q, spec.questions)) setDepth(n, d + 1);
+  };
+  setDepth(spec.questions[0].id, 0);
+
+  const maxDepth = Math.max(0, ...depth.values());
+  const columns = [];
+  for (let d = 0; d <= maxDepth; d++) columns.push(spec.questions.filter((q) => depth.get(q.id) === d));
+  const orphans = spec.questions.filter((q) => !depth.has(q.id));
+  const missing = new Set();
+
+  const wrap = el('div', { class: 'map-wrap' });
+  const map = el('div', { class: 'map' });
+  const nodes = new Map();
+
+  const nodeFor = (q, extraClass = '') => {
+    const ends = outgoingIds(q, spec.questions).every((n) => n == null);
+    const n = el('div', {
+      class: `node ${q.type === 'choice' ? 'choice' : ''} ${ends ? 'end' : ''} ${extraClass} ${selected === q.id ? 'on' : ''}`,
+      onclick: () => { selected = q.id; touch({ redrawDetail: true }); },
+    },
+      el('div', { class: 'nid', text: q.id }),
+      el('div', { class: 'npr', text: q.prompt || '(no prompt yet)' }),
+      el('div', { class: 'ntag', text: ends ? 'ends the test' : q.type === 'choice' ? `${(q.options || []).length} options` : '' }));
+    nodes.set(q.id, n);
+    return n;
+  };
+
+  columns.forEach((col, d) => {
+    const c = el('div', { class: 'map-col' }, el('div', { class: 'col-h', text: `Step ${d + 1}` }));
+    for (const q of col) c.append(nodeFor(q));
+    map.append(c);
+  });
+
+  // Anything a branch points at that does not exist gets drawn, in red, rather than silently
+  // dropped. A dangling destination is the single most common authoring mistake.
+  for (const q of spec.questions) {
+    for (const n of outgoingIds(q, spec.questions)) {
+      if (n != null && !spec.questions.some((x) => x.id === n)) missing.add(n);
+    }
+  }
+  if (missing.size || orphans.length) {
+    const c = el('div', { class: 'map-col' }, el('div', { class: 'col-h', text: 'Not on any route' }));
+    for (const q of orphans) c.append(nodeFor(q, 'orphan'));
+    for (const id of missing) {
+      const n = el('div', { class: 'node missing' },
+        el('div', { class: 'nid', text: id }),
+        el('div', { class: 'npr', text: 'This question does not exist' }));
+      nodes.set(`missing:${id}`, n);
+      c.append(n);
+    }
+    map.append(c);
+  }
+
+  wrap.append(map);
+  root.append(wrap);
+
+  // Edges need the real positions of the boxes, and the map is already in the document by now,
+  // so measuring here forces the layout we need and reads it back in the same tick.
+  //
+  // Deliberately NOT requestAnimationFrame: that callback does not fire while a page is hidden,
+  // so opening the builder in a background tab produced a map with nodes and no edges at all.
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  map.append(svg);
+  drawEdges(map, svg, nodes);
+  // Web fonts landing later can shift every box, so measure once more when they settle.
+  if (document.fonts && document.fonts.status !== 'loaded') {
+    document.fonts.ready.then(() => { if (svg.isConnected) drawEdges(map, svg, nodes); });
+  }
+
+  // Every complete route, which is the thing an author actually wants to check.
+  const { routes, truncated } = routesFrom(spec.questions[0].id, spec.questions, []);
+  const lengths = routes.map((r) => r.length);
+  const box = el('div', { class: 'routes' });
+  box.append(el('strong', {
+    text: routes.length === 1
+      ? 'One route through this test.'
+      : `${routes.length} possible routes, ${Math.min(...lengths)} to ${Math.max(...lengths)} questions long.`,
+  }));
+  if (routes.length > 1 && new Set(lengths).size > 1) {
+    box.append(el('p', { class: 'hint', text: 'Because the routes differ in length, candidates see "Question 3" rather than "Question 3 of 6". Make every route the same length if you want the count back.' }));
+  }
+  if (truncated) box.append(el('p', { class: 'hint', text: 'Too many routes to list them all.' }));
+  const ol = el('ol');
+  for (const r of routes.slice(0, 12)) ol.append(el('li', {}, el('code', { text: r.join(' → ') || '(empty)' })));
+  box.append(ol);
+  root.append(box);
+}
+
+/** One curve per possible transition, labelled with the option that takes it. */
+function drawEdges(map, svg, nodes) {
+  const base = map.getBoundingClientRect();
+  svg.setAttribute('viewBox', `0 0 ${map.scrollWidth} ${map.scrollHeight}`);
+  svg.setAttribute('width', map.scrollWidth);
+  svg.setAttribute('height', map.scrollHeight);
+  for (const stale of map.querySelectorAll('.edge-label')) stale.remove();
+
+  const at = (node) => {
+    const r = node.getBoundingClientRect();
+    return {
+      x1: r.left - base.left + map.scrollLeft, x2: r.right - base.left + map.scrollLeft,
+      y: r.top - base.top + map.scrollTop + r.height / 2,
+    };
+  };
+
+  for (const q of spec.questions) {
+    const from = nodes.get(q.id);
+    if (!from) continue;
+    const labels = optionLabels(q) || [];
+    const edges = [];
+
+    if (q.type === 'choice' && Array.isArray(q.options) && q.options.length) {
+      q.options.forEach((o, i) => {
+        const dest = o && typeof o === 'object' && o.next !== undefined
+          ? o.next
+          : outgoingIds({ ...q, options: [] }, spec.questions)[0];
+        edges.push({ dest, label: labels[i] || `Option ${i + 1}` });
+      });
+    } else {
+      edges.push({ dest: outgoingIds(q, spec.questions)[0], label: '' });
+    }
+
+    for (const { dest, label } of edges) {
+      if (dest == null) continue;
+      const to = nodes.get(dest) || nodes.get(`missing:${dest}`);
+      if (!to) continue;
+      const a = at(from);
+      const b = at(to);
+      const bad = !spec.questions.some((x) => x.id === dest);
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const mid = (a.x2 + b.x1) / 2;
+      path.setAttribute('d', `M ${a.x2} ${a.y} C ${mid} ${a.y}, ${mid} ${b.y}, ${b.x1} ${b.y}`);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', bad ? 'var(--danger)' : 'var(--muted)');
+      path.setAttribute('stroke-width', '1.5');
+      if (bad) path.setAttribute('stroke-dasharray', '4 3');
+      path.setAttribute('opacity', '0.75');
+      svg.append(path);
+
+      if (label) {
+        map.append(el('div', {
+          class: 'edge-label',
+          style: `left:${mid - 40}px; top:${(a.y + b.y) / 2 - 8}px`,
+          title: label,
+          text: label.length > 22 ? `${label.slice(0, 21)}…` : label,
+        }));
+      }
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ preview --------- */
+
+function renderPreview(root) {
+  const cur = currentQuestionId(walk, spec.questions);
+
+  root.append(el('p', { class: 'hint', text: 'Click through your own test the way a candidate would, using the same routing code the server runs. Nothing here is timed or saved.' }));
+
+  if (walk.length) {
+    root.append(el('div', { class: 'pv crumbs', style: 'border:0;padding:0;background:none' },
+      el('span', { text: `Route so far: ${walk.map((a) => a.id).join(' → ')}` })));
+  }
+
+  const card = el('div', { class: 'pv' });
+
+  if (!cur) {
+    card.append(el('h3', { text: walk.length ? 'The test ends here' : 'There are no questions yet' }));
+    if (walk.length) {
+      card.append(el('p', { class: 'ctx', text: `This route was ${walk.length} question${walk.length === 1 ? '' : 's'} long.` }));
+    }
+  } else {
+    const q = questionById(cur, spec.questions);
+    const brief = q.brief ? spec.briefs[q.brief] : null;
+    if (brief) {
+      const b = el('div', { class: 'pv-brief' });
+      if (brief.heading) b.append(el('strong', { text: brief.heading }));
+      for (const block of brief.blocks || []) {
+        if (block.type === 'p') b.append(el('p', { text: block.text }));
+        else if (block.type === 'quote') {
+          const fig = el('figure');
+          if (block.label) fig.append(el('figcaption', { text: block.label }));
+          fig.append(el('p', { text: block.text }));
+          if (block.list) {
+            const ol = el('ol');
+            for (const item of block.list) ol.append(el('li', { text: item }));
+            fig.append(ol);
+          }
+          if (block.after) fig.append(el('p', { text: block.after }));
+          b.append(fig);
+        } else if (block.type === 'link') {
+          b.append(el('p', {}, el('em', { text: `[link button: ${block.label || block.url}]` })));
+        }
+      }
+      card.append(b);
+    }
+
+    card.append(el('h3', { text: q.prompt || '(no prompt yet)' }));
+    if (q.context) card.append(el('p', { class: 'ctx', text: q.context }));
+
+    if (q.type === 'choice') {
+      (optionLabels(q) || []).forEach((label, i) => {
+        card.append(el('button', {
+          class: 'btn pv-opt',
+          onclick: () => { walk.push({ id: cur, value: label, choiceIndex: i }); renderInspector(); },
+          text: label || `(option ${i + 1} has no wording)`,
+        }));
+      });
+    } else {
+      card.append(el('div', { class: 'fake', text: `[${q.type === 'short' ? 'single line' : 'answer box'}, up to ${q.maxLength || 2000} characters${q.required === false ? ', optional' : ''}]` }));
+      card.append(el('button', {
+        class: 'btn p',
+        onclick: () => { walk.push({ id: cur, value: 'preview' }); renderInspector(); },
+        text: 'Continue',
+      }));
+    }
+  }
+
+  root.append(card);
+  root.append(el('div', { class: 'btns', style: 'margin-top:0.6rem' },
+    el('button', { class: 'btn', text: 'Start again', onclick: () => { walk = []; renderInspector(); } })));
+}
+
+/* ----------------------------------------------------------------- problems --------- */
+
+/**
+ * Everything wrong with the draft: the engine's own flow rules, plus the things only an author
+ * can get wrong, like an empty prompt or a link that is not a link.
+ */
+function review() {
+  const problems = validateFlow(spec.questions).map((p) => ({ ...p }));
+
+  for (const q of spec.questions) {
+    if (!q.prompt || !q.prompt.trim()) problems.push({ level: 'error', id: q.id, message: `"${q.id}" has no question text.` });
+    if (q.type === 'choice') {
+      (q.options || []).forEach((o, i) => {
+        const label = typeof o === 'string' ? o : (o && o.label) || '';
+        if (!label.trim()) problems.push({ level: 'error', id: q.id, message: `Option ${i + 1} of "${q.id}" has no wording.` });
+      });
+    }
+    if (q.section && !spec.sections.some((s) => s.id === q.section)) {
+      problems.push({ level: 'warning', id: q.id, message: `"${q.id}" is in part "${q.section}", which no longer exists.` });
+    }
+  }
+
+  for (const [key, brief] of Object.entries(spec.briefs)) {
+    for (const b of brief.blocks || []) {
+      if (b.type !== 'link') continue;
+      // This URL becomes a real href on the candidate page, so anything but http(s) is refused
+      // rather than rendered. It is the one place author-supplied text reaches an attribute.
+      if (!/^https?:\/\/\S+$/i.test(b.url || '')) {
+        problems.push({ level: 'error', message: `The link in brief "${key}" must be a full https:// address.` });
+      }
+    }
+  }
+
+  const usedSections = new Set(spec.questions.map((q) => q.section));
+  for (const s of spec.sections) {
+    if (!usedSections.has(s.id)) problems.push({ level: 'warning', message: `Part "${s.label}" has no questions in it.` });
+  }
+
+  const planned = spec.sections.reduce((n, s) => n + (Number(s.recommendedMin) || 0), 0);
+  const totalMin = Math.round((spec.durationSec || 0) / 60);
+  if (planned && totalMin && Math.abs(planned - totalMin) > Math.max(5, totalMin * 0.15)) {
+    problems.push({
+      level: 'warning',
+      message: `The parts add up to ${planned} minutes but the test is ${totalMin}. The progress bar and the clock will tell different stories.`,
+    });
+  }
+
+  problems.sort((a, b) => (a.level === b.level ? 0 : a.level === 'error' ? -1 : 1));
+  return problems;
+}
+
+function renderProblems(root, problems) {
+  if (!problems.length) {
+    root.append(el('p', { class: 'ok-line', text: 'No problems. Every route resolves and every question has text.' }));
+    return;
+  }
+  for (const p of problems) {
+    root.append(el('div', { class: `prob ${p.level}` },
+      el('span', { class: 'lvl', text: p.level }),
+      el('span', { text: p.message })));
+  }
+}
+
+/* -------------------------------------------------------------------- json ---------- */
+
+function specJson() {
+  return JSON.stringify({
+    durationSec: spec.durationSec,
+    notes: spec.notes || '',
+    sections: spec.sections,
+    briefs: spec.briefs,
+    questions: spec.questions,
+  }, null, 2);
+}
+
+function renderJson(root) {
+  root.append(el('p', { class: 'hint' },
+    el('span', { text: 'Download this, then try it for real with ' }),
+    el('code', { text: 'node tools/dev-server.mjs --spec=your-file.json' }),
+    el('span', { text: '. When you are happy, an engineer runs ' }),
+    el('code', { text: 'node tools/spec-apply.mjs your-file.json' }),
+    el('span', { text: ' and commits the result. Publishing is a deploy, on purpose: this page has no password.' })));
+
+  const ta = el('textarea', { class: 'json', spellcheck: 'false' });
+  ta.value = specJson();
+  ta.readOnly = true;
+  root.append(ta);
+  root.append(el('div', { class: 'btns', style: 'margin-top:0.5rem' },
+    el('button', {
+      class: 'btn', text: 'Copy',
+      onclick: async () => {
+        try { await navigator.clipboard.writeText(specJson()); note('Spec copied'); }
+        catch { ta.select(); note('Press Ctrl+C to copy'); }
+      },
+    }),
+    el('button', { class: 'btn p', text: 'Download', onclick: download })));
+}
+
+/* ------------------------------------------------------------------- files ---------- */
+
+function download() {
+  const blob = new Blob([specJson()], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = el('a', { href: url, download: 'work-test-spec.json' });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  note('Spec downloaded');
+}
+
+function adopt(next) {
+  if (!next || !Array.isArray(next.questions)) throw new Error('That file has no questions array.');
+  spec = {
+    durationSec: next.durationSec || 5400,
+    notes: typeof next.notes === 'string' ? next.notes : '',
+    sections: Array.isArray(next.sections) && next.sections.length ? next.sections : STARTER().sections,
+    briefs: next.briefs && typeof next.briefs === 'object' ? next.briefs : {},
+    questions: next.questions,
+  };
+  selected = firstId();
+  walk = [];
+  touch({ redrawDetail: true });
+}
+
+$('#import').addEventListener('click', () => $('#file').click());
+$('#file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    adopt(JSON.parse(await file.text()));
+    note(`Loaded ${file.name}`);
+  } catch (err) {
+    note(`Could not read that file: ${err.message}`, true);
+  }
+  e.target.value = '';
+});
+
+$('#load-example').addEventListener('click', async () => {
+  if (!confirm('Replace the current draft with the example branching test?')) return;
+  try {
+    const res = await fetch('tools/example-branching-spec.json');
+    adopt(await res.json());
+    note('Example loaded');
+  } catch {
+    note('Could not load the example. Are you running the dev server?', true);
+  }
+});
+
+$('#download').addEventListener('click', download);
+
+// The map is measured from real element positions, so it has to be redrawn when they move.
+addEventListener('resize', () => { if (tab === 'map') renderInspector(); });
+
+renderOutline();
+renderDetail();
+renderInspector();
+</script>
+</body>
+</html>
