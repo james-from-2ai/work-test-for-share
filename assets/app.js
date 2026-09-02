@@ -770,6 +770,125 @@ function richEditor(q, field, onInput) {
   return { read: () => serializeEditor(editor), editor };
 }
 
+/**
+ * Reads a file as base64 without blowing the stack.
+ *
+ * The obvious `btoa(String.fromCharCode(...bytes))` throws on anything of real size, because
+ * spreading a multi-megabyte array exceeds the argument limit. readAsDataURL hands back an
+ * already-encoded string, so the encoding never passes through JavaScript at all.
+ */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('read_failed'));
+    reader.onload = () => {
+      const out = String(reader.result || '');
+      const comma = out.indexOf(',');
+      resolve(comma >= 0 ? out.slice(comma + 1) : '');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+const kb = (bytes) => `${Math.max(1, Math.round(bytes / 1000))} KB`;
+
+/**
+ * An upload question: choose a file, then name it.
+ *
+ * The file is sent the moment it is chosen rather than when the answer is submitted. An upload
+ * takes time and the grace window after the deadline is only a few seconds, so attaching a file
+ * near the buzzer must not be the thing that loses it. By the time the candidate presses
+ * continue, the file is already stored and all that travels is the name they gave it.
+ */
+function uploadField(q, state, field, next) {
+  let attached = state.upload || null;
+
+  const box = document.createElement('div');
+  box.className = 'upload';
+
+  const file = document.createElement('input');
+  file.type = 'file';
+  file.className = 'upload-input';
+  if (q.acceptAttr) file.accept = q.acceptAttr;
+
+  const status = document.createElement('p');
+  status.className = 'muted small upload-status';
+
+  const nameLabel = document.createElement('label');
+  nameLabel.className = 'lbl';
+  nameLabel.textContent = 'What is this file? Give it a short name.';
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.maxLength = q.maxLength || 120;
+  nameInput.placeholder = q.placeholder || 'e.g. Portfolio model, final version';
+  nameInput.autocomplete = 'off';
+
+  const paint = () => {
+    status.textContent = attached
+      ? `Attached: ${attached.filename} (${kb(attached.size)}). Choosing another file replaces it.`
+      : q.acceptText || 'No file chosen yet.';
+    status.classList.toggle('ok', !!attached);
+  };
+
+  file.addEventListener('change', async () => {
+    const chosen = file.files && file.files[0];
+    if (!chosen) return;
+
+    // Checked here purely so an obviously oversized file fails instantly instead of after a long
+    // upload. The server checks the same thing, and its check is the one that counts.
+    if (q.maxBytes && chosen.size > q.maxBytes) {
+      file.value = '';
+      paint();
+      return showError(`That file is ${(chosen.size / 1_000_000).toFixed(1)} MB. The limit is ${(q.maxBytes / 1_000_000).toFixed(1)} MB.`);
+    }
+
+    showError('');
+    status.textContent = `Uploading ${chosen.name}…`;
+    next.disabled = true;
+    file.disabled = true;
+
+    let data;
+    try {
+      data = await fileToBase64(chosen);
+    } catch {
+      next.disabled = false;
+      file.disabled = false;
+      file.value = '';
+      paint();
+      return showError('That file could not be read. Try choosing it again.');
+    }
+
+    const res = await api('upload', {
+      questionId: q.id, filename: chosen.name, contentType: chosen.type, data,
+    });
+    next.disabled = false;
+    file.disabled = false;
+
+    if (!res.ok || !res.uploaded) {
+      file.value = '';
+      paint();
+      return showError(res.detail || RETRY_MSG);
+    }
+    attached = res.uploaded;
+    paint();
+    if (!nameInput.value.trim()) nameInput.focus();
+  });
+
+  box.append(file, status, nameLabel, nameInput);
+  field.append(box);
+  paint();
+  file.focus();
+
+  return {
+    read: () => nameInput.value.trim(),
+    extraCheck: () => {
+      if (q.required !== false && !attached) return 'Choose a file before continuing.';
+      if (attached && !nameInput.value.trim()) return 'Give the file a short name so we know what it is.';
+      return null;
+    },
+  };
+}
+
 function renderQuestion(state) {
   const q = state.question;
   deadline = state.deadline;
@@ -807,6 +926,9 @@ function renderQuestion(state) {
   if (review) next.parentNode.insertBefore(review, next);
 
   let read; // returns what we send as `value`
+  // Some questions refuse to continue for a reason `isBlank` cannot express, such as an upload
+  // question whose file has not been chosen. Returns a message, or null when it is happy.
+  let extraCheck = null;
 
   if (q.type === 'rich') {
     const counter = document.createElement('p');
@@ -858,6 +980,8 @@ function renderQuestion(state) {
     };
     const firstOpt = list.querySelector('input');
     if (firstOpt) firstOpt.focus();
+  } else if (q.type === 'upload') {
+    ({ read, extraCheck } = uploadField(q, state, field, next));
   } else {
     const input = document.createElement(q.type === 'long' ? 'textarea' : 'input');
     if (q.type !== 'long') input.type = 'text';
@@ -898,6 +1022,8 @@ function renderQuestion(state) {
   next.addEventListener('click', async () => {
     if (inFlight) return;
     const value = read();
+    const blocked = extraCheck && extraCheck();
+    if (blocked) return showError(blocked);
     if (q.required && isBlank(value)) {
       showError(q.type === 'choice'
         ? 'Choose one option to continue.'

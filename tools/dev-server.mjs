@@ -20,7 +20,7 @@
  */
 
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -70,6 +70,8 @@ const CFG = config({
   allowSelfReset: arg('selfreset') || process.env.ALLOW_SELF_RESET || 'on',
 });
 
+const UPLOADS = join(ROOT, 'tools', '.dev-uploads');
+
 /** Same three-method interface as the KV wrapper, backed by one JSON file. */
 const store = {
   async all() {
@@ -87,6 +89,18 @@ const store = {
     const db = await store.all();
     db[key] = value;
     await writeFile(STORE, JSON.stringify(db, null, 2));
+  },
+  /**
+   * Stands in for Airtable's attachment upload so the whole upload flow can be rehearsed
+   * offline. Files go to tools/.dev-uploads/, which is gitignored: they are practice
+   * submissions and have no business in the repository.
+   */
+  async putFile(key, { filename, base64 }) {
+    mkdirSync(UPLOADS, { recursive: true });
+    const safe = `${key.replace(/[^a-z0-9]+/gi, '_')}--${filename}`;
+    await writeFile(join(UPLOADS, safe), Buffer.from(base64, 'base64'));
+    console.log(`  saved upload: tools/.dev-uploads/${safe}`);
+    return { attachmentId: safe, recordId: key, url: null, filename };
   },
   async delete(key) {
     const db = await store.all();
@@ -160,8 +174,23 @@ createServer(async (req, res) => {
   } catch {
     send(res, 404, 'not found', 'text/plain');
   }
-}).listen(PORT, () => {
-  console.log(`work test dev server on http://localhost:${PORT}${TEST_PATH}`);
-  console.log(`admin:  http://localhost:${PORT}${TEST_PATH}admin.html   key: ${ADMIN_KEY}`);
-  console.log(`clock:  ${CFG.durationSec}s total, ${CFG.graceSec}s grace`);
-});
+})
+  // A port already in use is the most ordinary thing that goes wrong here, usually another copy
+  // of this server left running in a forgotten terminal. Node's default is an unhandled 'error'
+  // event and twenty lines of stack, which buries the one sentence worth reading.
+  .on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use, probably by another dev server.`);
+      console.error('Either stop that one, or start this on a different port:');
+      console.error(`  node tools/dev-server.mjs --port=${PORT + 1}${arg('spec') ? ` --spec=${arg('spec')}` : ''}`);
+      process.exit(1);
+    }
+    console.error(err && err.message ? err.message : err);
+    process.exit(1);
+  })
+  .listen(PORT, () => {
+    console.log(`work test dev server on http://localhost:${PORT}${TEST_PATH}`);
+    console.log(`admin:   http://localhost:${PORT}${TEST_PATH}admin.html   key: ${ADMIN_KEY}`);
+    console.log(`builder: http://localhost:${PORT}${TEST_PATH}builder.html`);
+    console.log(`clock:   ${CFG.durationSec}s total, ${CFG.graceSec}s grace`);
+  });

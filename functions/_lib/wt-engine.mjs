@@ -30,6 +30,7 @@ import {
   currentQuestionId, questionById, firstQuestionId, optionLabels,
   remainingRange, sectionOutlook,
 } from './wt-flow.mjs';
+import { checkUpload, acceptAttribute, describeAllowed, MAX_UPLOAD_BYTES } from './wt-files.mjs';
 
 const KEY = (token) => `c:${token}`;
 /**
@@ -118,8 +119,17 @@ function publicQuestion(id, answers, cfg) {
     placeholder: q.placeholder || null,
     required: q.required !== false,
     brief: q.brief ? cfg.briefs[q.brief] || null : null,
+    ...(q.type === 'upload' ? {
+      accept: acceptOf(q),
+      acceptAttr: acceptAttribute(acceptOf(q)),
+      acceptText: `Upload a ${describeAllowed(acceptOf(q))}, up to ${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB.`,
+      maxBytes: MAX_UPLOAD_BYTES,
+    } : {}),
   };
 }
+
+/** Which file types one upload question takes. PDF and Word unless the author narrowed it. */
+const acceptOf = (q) => (Array.isArray(q.accept) && q.accept.length ? q.accept : ['pdf', 'docx']);
 
 /**
  * Where the candidate is, measured in effort rather than in questions.
@@ -237,6 +247,9 @@ function view(rec, now, cfg, extra = {}) {
   if (phase === 'running') {
     out.question = publicQuestion(currentId, rec.answers, cfg);
     out.progress = progressOf(rec.answers, currentId, cfg);
+    // A file already uploaded for this question, so refreshing or coming back on another device
+    // shows what is attached rather than an empty field the candidate would upload to twice.
+    if (rec.uploads && rec.uploads[currentId]) out.upload = rec.uploads[currentId];
   }
   // On the instructions screen there is no current question, but the shape of the task is
   // exactly what someone deciding whether to press start wants to see.
@@ -312,6 +325,12 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       if (rich) {
         // Formatted answers arrive as blocks, never as HTML. See wt-rich.mjs for why.
         value = sanitizeRich(body.value, max).blocks;
+      } else if (q.type === 'upload') {
+        // The file is already stored. What is being submitted here is the name the candidate
+        // gave it, which is the thing that makes a list of attachments readable to a reviewer.
+        value = clamp(body.value, q.maxLength || 120).trim();
+        const attached = rec.uploads && rec.uploads[q.id];
+        if (q.required !== false && !attached) return view(rec, now, cfg, { rejected: 'no_file' });
       } else if (q.type === 'choice') {
         // Never trust a client-sent label; accept only an index into our own options. The index
         // is then kept alongside the label, because with branching it is the index that decides
@@ -341,6 +360,9 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         value,
         // Only present on a choice, and the reason the route survives an edit to the wording.
         ...(choiceIndex === undefined ? {} : { choiceIndex }),
+        // Copied onto the answer rather than only living in rec.uploads, so the CSV and the
+        // admin page can read one row without cross-referencing anything.
+        ...(rec.uploads && rec.uploads[q.id] ? { upload: rec.uploads[q.id] } : {}),
         // Lets the admin page and the CSV know how to read `value` without re-deriving it from
         // the question list, which may have been edited since this answer was written.
         format: rich ? 'rich' : 'text',
@@ -355,6 +377,62 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       if (!currentQuestionId(rec.answers, cfg.questions)) rec.finishedAt = now;
       await store.put(KEY(token), rec);
       return view(rec, now, cfg);
+    }
+
+    case 'upload': {
+      // Files are stored the moment they are chosen, NOT when the answer is submitted. An upload
+      // takes time, the grace window after the deadline is a few seconds, and a candidate on a
+      // slow connection should not lose a file because they attached it near the buzzer.
+      const phase = phaseOf(rec, now, cfg);
+      if (phase !== 'running') return view(rec, now, cfg, { rejected: phase });
+
+      const currentId = currentQuestionId(rec.answers, cfg.questions);
+      if (!currentId) return view(rec, now, cfg, { rejected: 'done' });
+      if (body.questionId && String(body.questionId) !== currentId) {
+        return view(rec, now, cfg, { rejected: 'out_of_order' });
+      }
+
+      const q = questionById(currentId, cfg.questions);
+      if (!q || q.type !== 'upload') return view(rec, now, cfg, { rejected: 'not_an_upload' });
+
+      // KV has no concept of an attachment. Refusing clearly beats a stack trace, though the
+      // real defence is the startup check that stops a spec with uploads running on such a store.
+      if (typeof store.putFile !== 'function') {
+        return {
+          ok: false,
+          error: 'uploads_unavailable',
+          status: 503,
+          detail: 'This deployment cannot accept files. Tell us and we will send you another way to submit it.',
+        };
+      }
+
+      const check = checkUpload({
+        filename: body.filename,
+        contentType: body.contentType,
+        base64: body.data,
+        allow: acceptOf(q),
+      });
+      if (!check.ok) return { ok: false, error: check.error, detail: check.detail, status: 400 };
+
+      // Every file for a session lands in one Airtable cell, so the question id in the name is
+      // what tells a reviewer which answer each attachment belongs to.
+      const stored = await store.putFile(KEY(token), {
+        filename: `${q.id}--${check.filename}`,
+        contentType: check.contentType,
+        base64: String(body.data).replace(/\s/g, ''),
+      });
+
+      rec.uploads = rec.uploads || {};
+      rec.uploads[q.id] = {
+        filename: check.filename,
+        size: check.size,
+        kind: check.kind,
+        at: now,
+        attachmentId: (stored && stored.attachmentId) || null,
+        recordId: (stored && stored.recordId) || null,
+      };
+      await store.put(KEY(token), rec);
+      return view(rec, now, cfg, { uploaded: rec.uploads[q.id] });
     }
 
     case 'review': {
@@ -456,6 +534,25 @@ async function register(store, body, now, cfg) {
   return { ...view(rec, now, cfg), token };
 }
 
+/**
+ * Whether this deployment can actually run this test. Called by the API so that a spec asking
+ * for files on a store with nowhere to put them fails at the door, loudly, instead of halfway
+ * through a candidate's sitting.
+ */
+export function readiness(store, cfg = config()) {
+  const needsFiles = cfg.questions.some((q) => q.type === 'upload');
+  if (needsFiles && typeof store.putFile !== 'function') {
+    return {
+      ok: false,
+      error: 'uploads_unconfigured',
+      detail: 'This test has a file upload question, but the configured store cannot hold files. '
+        + 'Uploads need the Airtable backend: set AIRTABLE_TOKEN, add an Attachment column named '
+        + 'Files (or set AIRTABLE_WT_FILES), and redeploy.',
+    };
+  }
+  return { ok: true };
+}
+
 /* ---------------------------------------------------------------- admin side ------- */
 
 export async function createCandidates(store, people) {
@@ -552,13 +649,13 @@ export function toCsv(rows) {
   // longer identifies what was asked.
   const head = [
     'name', 'email', 'status', 'started_utc', 'finished_utc', 'ran_out',
-    'question', 'question_id', 'prompt', 'answer', 'seconds_on_question', 'words',
-    'pastes', 'tab_switches',
+    'question', 'question_id', 'prompt', 'answer', 'file_name', 'file_size_kb',
+    'seconds_on_question', 'words', 'pastes', 'tab_switches',
   ];
   const lines = [head.map(esc).join(',')];
   for (const r of rows) {
     if (!r.answers.length) {
-      lines.push([r.name, r.email, r.phase, iso(r.startedAt), iso(r.finishedAt), r.ranOut ? 'yes' : 'no', '', '', '', '', '', '', '', ''].map(esc).join(','));
+      lines.push([r.name, r.email, r.phase, iso(r.startedAt), iso(r.finishedAt), r.ranOut ? 'yes' : 'no', '', '', '', '', '', '', '', '', '', ''].map(esc).join(','));
       continue;
     }
     for (const a of r.answers) {
@@ -566,7 +663,9 @@ export function toCsv(rows) {
         r.name, r.email, r.phase, iso(r.startedAt), iso(r.finishedAt), r.ranOut ? 'yes' : 'no',
         // Formatted answers flatten to text with `##` and `-` markers kept, so the structure the
         // candidate chose survives into a spreadsheet cell.
-        a.index + 1, a.id || '', a.prompt, richToText(a.value), Math.round(a.msSpent / 1000), richWordCount(a.value),
+        a.index + 1, a.id || '', a.prompt, richToText(a.value),
+        a.upload ? a.upload.filename : '', a.upload ? Math.round(a.upload.size / 1000) : '',
+        Math.round(a.msSpent / 1000), richWordCount(a.value),
         a.pastes, a.blurs,
       ].map(esc).join(','));
     }

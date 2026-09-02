@@ -72,14 +72,85 @@ The three differences to reapply, all deliberate:
 3. `index.html` and `admin.html` carry the demo banner, and the test imports are one level
    shallower.
 
+## Writing a test without touching code
+
+`/builder.html` is the authoring tool. Someone who does not write code can build a whole test in
+it: the questions, the options and where each one branches to, the parts and their recommended
+minutes, and the scenario briefs. Four panels sit alongside the editor:
+
+- **Branch map**, drawing every route, labelled with the option that takes it. A branch pointing
+  at a question that does not exist is drawn in red, which is the mistake worth catching early:
+  it is otherwise invisible until a candidate walks into it, on a clock.
+- **Walk it through**, clicking the draft the way a candidate would, using the same routing code
+  the server runs.
+- **Problems**, updated as you type.
+- **Spec file**, which is what you download.
+
+The builder **cannot publish**, on purpose. It has no password, and what it would be publishing is
+a live hiring assessment. Shipping is a reviewed diff instead:
+
+```bash
+node tools/dev-server.mjs --spec=work-test-spec.json   # try the draft for real
+node tools/spec-apply.mjs work-test-spec.json          # write it into the questions file
+git diff                                               # read what changed, then commit and deploy
+```
+
+`tools/spec-export.mjs` goes the other way, turning the test that is currently live back into a
+spec so it can be opened in the builder rather than retyped. Anything that has to survive a
+regeneration, above all where the task came from, belongs in the spec's `notes` field: it is
+written into the header of the generated file, and everything else in that file is overwritten.
+
+## Branching
+
+A question falls through to the next one in the list unless it says otherwise, so a test with no
+branching behaves exactly as a flat list does. `next: 'some_id'` jumps, `next: null` ends the
+test, and each option on a multiple choice can carry its own `next`.
+
+Three things follow from that, and they are worth knowing before wiring one:
+
+- **An option never reveals where it leads.** Destinations are stripped server-side, so choosing
+  is not also a preview of what each choice costs.
+- **Where routes differ in length there is no total**, so a candidate sees "Question 3" rather
+  than "Question 3 of 6". Keep every route the same length if you want the count back.
+- **Do not edit the flow while somebody is sitting the test.** The route is derived from the spec
+  on every request, which is what keeps sessions and spec from ever disagreeing, but it means a
+  change mid-sitting can move where that candidate's next answer lands.
+
+## File uploads
+
+A question of type `upload` takes one PDF or Word document, up to 4.5 MB, and asks the candidate
+to give it a short name so a reviewer can tell what it is. For a second attachment, add a second
+upload question.
+
+The file is stored the moment it is chosen, not when the answer is submitted, so attaching
+something near the buzzer cannot be the thing that loses it.
+
+**Uploads need the Airtable backend.** Add an **Attachment** column named `Files` to the sessions
+table (or set `AIRTABLE_WT_FILES` to another name); Airtable will not create one on demand. A test
+with an upload question refuses to start on a store that cannot hold files, rather than failing on
+one candidate mid-sitting. The 4.5 MB cap is Airtable's 5 MB upload limit with headroom.
+
+What the type check does and does not prove, because the difference matters:
+
+- **A PDF is verified properly**, byte by byte. A file renamed to `.pdf` is refused.
+- **A `.docx` is not.** It is a ZIP, so the check establishes "a zip archive, named .docx, with a
+  matching content type" and no more. Proving it is a real Word document means opening the
+  archive, which is more than belongs in a request on a candidate's clock.
+
+Either way this stops ordinary mistakes, not someone acting in bad faith. **A hostile PDF is a
+risk to whoever opens it**, and nothing in this repo changes that. The admin page links to the
+Airtable row and says to download rather than preview.
+
 ## Running it locally
 
 ```bash
 node tools/dev-server.mjs --duration=120
 ```
 
-Then `http://localhost:8788/`, admin at `/admin.html`, key `dev`. Tests:
+Then `http://localhost:8788/`, admin at `/admin.html` with key `dev`, builder at `/builder.html`.
+Add `--port=8899` if that port is busy, and `--spec=file.json` to run a draft. Uploads are written
+to `tools/.dev-uploads/`, which is gitignored. Tests:
 
 ```bash
-node --test tools/engine.test.mjs tools/airtable.test.mjs
+node --test tools/engine.test.mjs tools/airtable.test.mjs tools/flow.test.mjs tools/files.test.mjs
 ```

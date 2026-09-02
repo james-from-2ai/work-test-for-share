@@ -1,3 +1,5 @@
 # Local dev state. Holds practice candidates and their answers; never deploy or commit it.
 tools/.dev-store.json
+# Files uploaded while rehearsing. Same reasoning, and they can be large.
+tools/.dev-uploads/
 node_modules/

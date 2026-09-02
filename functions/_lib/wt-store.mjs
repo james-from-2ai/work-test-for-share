@@ -14,6 +14,9 @@
  *                        in master-mega-badass-site; there is no such form in this repo.
  *   AIRTABLE_WT_BASE   - optional, defaults to the base holding Tech Requests.
  *   AIRTABLE_WT_TABLE  - optional, defaults to the Work Test Sessions table in that base.
+ *   AIRTABLE_WT_FILES  - optional, the name of the attachment column candidate uploads land in.
+ *                        Defaults to `Files`. The column has to exist and be an Attachment
+ *                        field; Airtable will not create one on demand.
  *
  * Base and table ids are identifiers, not credentials, so they are defaulted here to keep setup
  * to zero new secrets. Only the token has to already exist.
@@ -49,6 +52,7 @@ export function storeFor(env) {
         token,
         baseId: env.AIRTABLE_WT_BASE || BASE,
         tableId: env.AIRTABLE_WT_TABLE || TABLE,
+        fileField: env.AIRTABLE_WT_FILES || 'Files',
       }),
     };
   }

@@ -24,6 +24,13 @@
 
 const API = 'https://api.airtable.com/v0';
 
+/**
+ * Uploading bytes goes to a different host from the rest of the API, and caps at 5 MB per file.
+ * wt-files.mjs refuses anything over 4.5 MB so a file we accepted can never then be rejected
+ * here, which would fail in front of a candidate who had already waited for the upload.
+ */
+const CONTENT = 'https://content.airtable.com/v0';
+
 /** Airtable formula strings are single quoted, so a quote in a value has to be escaped. */
 const quote = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 
@@ -36,7 +43,7 @@ const iso = (ms) => (ms ? new Date(ms).toISOString() : null);
  */
 const MAX_DATA = 90_000;
 
-export function airtableStore({ token, baseId, tableId, fetchImpl = fetch }) {
+export function airtableStore({ token, baseId, tableId, fileField = 'Files', fetchImpl = fetch }) {
   // Maps a key to the Airtable record id, so a get followed by a put costs one request, not two.
   // Scoped to this store instance, which lives for one request, so it cannot go stale.
   const ids = new Map();
@@ -165,6 +172,42 @@ export function airtableStore({ token, baseId, tableId, fetchImpl = fetch }) {
       if (!id) return;
       await call(`${tableId}/${id}`, { method: 'DELETE' });
       ids.delete(key);
+    },
+
+    /**
+     * Attaches one file to the session's row, in the attachment column named by `fileField`.
+     *
+     * Every file a candidate uploads lands in that one cell, which is why the caller prefixes
+     * the question id onto the filename: in a cell holding three attachments, the name is the
+     * only thing saying which question each one answers.
+     *
+     * The record has to exist already, and it does: it is written at registration, long before
+     * anyone can reach a question. Throwing rather than creating one keeps this from quietly
+     * inventing a session that the rest of the engine knows nothing about.
+     */
+    async putFile(key, { filename, contentType, base64 }) {
+      let id = ids.get(key);
+      if (!id) {
+        const rec = await findRecord(key);
+        id = rec && rec.id;
+      }
+      if (!id) throw new Error(`airtable: no record for ${key}, so there is nothing to attach a file to`);
+
+      const res = await fetchImpl(`${CONTENT}/${baseId}/${id}/${encodeURIComponent(fileField)}/uploadAttachment`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ contentType, file: base64, filename }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        throw new Error(`airtable upload ${res.status}: ${detail.slice(0, 300)}`);
+      }
+      const data = await res.json().catch(() => ({}));
+      const list = (data.fields && data.fields[fileField]) || [];
+      const made = list[list.length - 1] || {};
+      // The url is recorded but never relied on: Airtable's attachment urls expire, so the admin
+      // page links to the row instead and treats this as a convenience only.
+      return { attachmentId: made.id || null, recordId: id, url: made.url || null, filename };
     },
 
     /**

@@ -31,7 +31,7 @@
  * endpoint is on the open internet. See README.md.
  */
 
-import { handle, config } from '../_lib/wt-engine.mjs';
+import { handle, config, readiness } from '../_lib/wt-engine.mjs';
 import { storeFor } from '../_lib/wt-store.mjs';
 import { json, readJson } from '../_lib/wt-kv.mjs';
 
@@ -47,6 +47,12 @@ export async function onRequestPost({ request, env }) {
 
   const body = await readJson(request);
   const cfg = config({ durationSec: env.DURATION_SEC, openRegistration: env.OPEN_REGISTRATION, allowSelfReset: env.ALLOW_SELF_RESET });
+
+  // A test that asks for files needs somewhere to put them. Saying so before anyone starts is
+  // the difference between a deployment that is obviously misconfigured and one that fails on a
+  // single candidate, mid-test, with the clock running.
+  const ready = readiness(store, cfg);
+  if (!ready.ok) return json({ ok: false, error: ready.error, detail: ready.detail }, 503);
 
   try {
     const result = await handle(store, body, Date.now(), cfg);

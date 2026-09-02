@@ -574,7 +574,10 @@ const TYPES = [
   ['long', 'Plain long answer'],
   ['short', 'Single line'],
   ['choice', 'Multiple choice (can branch)'],
+  ['upload', 'File upload (PDF or Word)'],
 ];
+
+const FILE_KINDS = [['pdf', 'PDF'], ['docx', 'Word document (.docx)']];
 
 function renderQuestionEditor(root, q) {
   const i = spec.questions.indexOf(q);
@@ -593,6 +596,11 @@ function renderQuestionEditor(root, q) {
       q.type = v;
       if (v === 'choice' && !Array.isArray(q.options)) q.options = [{ label: 'First option' }, { label: 'Second option' }];
       if (v !== 'choice') delete q.options;
+      if (v === 'upload' && !Array.isArray(q.accept)) q.accept = ['pdf', 'docx'];
+      if (v !== 'upload') delete q.accept;
+      // The limit on an upload question applies to the NAME the candidate gives the file, not
+      // to the file, so the usual thousands-of-characters default would be nonsense.
+      if (v === 'upload') q.maxLength = 120;
       touch({ redrawDetail: true });
     })),
     field('Which part', select(spec.sections.map((s) => [s.id, s.label]), q.section, (v) => { q.section = v; touch(); }))));
@@ -602,14 +610,32 @@ function renderQuestionEditor(root, q) {
       if (v) q.brief = v; else delete q.brief;
       touch();
     })),
-    q.type === 'choice' ? el('span') : field('Character limit', number(q.maxLength, (v) => { q.maxLength = v; touch(); }, { min: 50 }))));
+    q.type === 'choice' || q.type === 'upload'
+      ? el('span')
+      : field('Character limit', number(q.maxLength, (v) => { q.maxLength = v; touch(); }, { min: 50 }))));
 
   root.append(checkbox(q.required !== false, (v) => {
     if (v) delete q.required; else q.required = false;
     touch();
   }, 'An answer is required to continue'));
 
-  if (q.type !== 'choice') {
+  if (q.type === 'upload') {
+    root.append(el('h2', { class: 'sec', text: 'What they can upload' }));
+    root.append(el('p', { class: 'hint', text: 'The candidate attaches one file and gives it a short name, so a reviewer can tell what it is. For a second attachment, add another upload question. Files are capped at 4.5 MB, which is what the storage allows.' }));
+    q.accept = Array.isArray(q.accept) && q.accept.length ? q.accept : ['pdf', 'docx'];
+    for (const [kind, label] of FILE_KINDS) {
+      root.append(checkbox(q.accept.includes(kind), (on) => {
+        const set = new Set(q.accept);
+        if (on) set.add(kind); else set.delete(kind);
+        // Allowing nothing would make the question impossible to answer, so the last one stays.
+        q.accept = set.size ? [...set] : [kind];
+        touch({ redrawDetail: true });
+      }, label));
+    }
+    root.append(el('p', { class: 'hint', text: 'A PDF can be verified properly: it is checked byte by byte, not by its name. A .docx can only be checked as far as "it is a zip archive named .docx", because proving it is a real Word document would mean opening the archive. Worth knowing when you decide which to accept.' }));
+  }
+
+  if (q.type !== 'choice' && q.type !== 'upload') {
     root.append(field('Placeholder text (optional)', input(q.placeholder, (v) => { if (v) q.placeholder = v; else delete q.placeholder; touch(); })));
   }
 
@@ -898,7 +924,10 @@ function renderPreview(root) {
         }));
       });
     } else {
-      card.append(el('div', { class: 'fake', text: `[${q.type === 'short' ? 'single line' : 'answer box'}, up to ${q.maxLength || 2000} characters${q.required === false ? ', optional' : ''}]` }));
+      const shape = q.type === 'upload'
+        ? `[file upload: ${(q.accept || ['pdf', 'docx']).join(' or ')}, up to 4.5 MB, plus a short name for it${q.required === false ? ', optional' : ''}]`
+        : `[${q.type === 'short' ? 'single line' : 'answer box'}, up to ${q.maxLength || 2000} characters${q.required === false ? ', optional' : ''}]`;
+      card.append(el('div', { class: 'fake', text: shape }));
       card.append(el('button', {
         class: 'btn p',
         onclick: () => { walk.push({ id: cur, value: 'preview' }); renderInspector(); },

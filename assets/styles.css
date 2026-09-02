@@ -339,6 +339,18 @@ button.primary[disabled] { opacity: 0.55; cursor: default; filter: none; }
 
 .err { color: var(--danger); font-size: 0.9rem; margin: 0.6rem 0 0; }
 
+/* --- Upload questions. The file is sent when it is chosen, so the status line is the only
+   feedback a candidate gets that it worked; it is deliberately wordy about what happens next. */
+.upload { display: block; }
+.upload-input {
+  display: block; width: 100%; font: inherit; font-size: 0.92rem;
+  padding: 0.6rem; border: 1px dashed var(--line); border-radius: 8px;
+  background: var(--card); color: inherit; cursor: pointer;
+}
+.upload-input:hover { border-color: var(--accent); }
+.upload-status { margin: 0.45rem 0 0.9rem; }
+.upload-status.ok { color: var(--accent); font-weight: 600; }
+
 /* --- Review: previously submitted answers, to look at and nothing more. A dialog rather than a
    screen, so the question underneath keeps whatever has been typed into it. --- */
 .review-open {

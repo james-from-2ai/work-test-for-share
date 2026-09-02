@@ -33,6 +33,8 @@
   .ans-body li { margin-bottom: 0.2rem; }
   .ans-body > *:first-child { margin-top: 0; }
   .ans-meta { margin-bottom: 0.5rem; }
+  .ans-file { font-size: 0.85rem; margin: 0.4rem 0 0; padding: 0.35rem 0.5rem;
+              border-left: 2px solid var(--warn); background: rgba(127,127,127,0.07); }
   button.ghost { font: inherit; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 0.3rem 0.6rem; color: inherit; cursor: pointer; }
 </style>
 </head>
@@ -189,6 +191,22 @@ function answersCell(r) {
     body.className = 'ans-body';
     renderAnswer(body, a.value);
     wrap.append(body);
+
+    // An attached file is the one thing on this page a reviewer has to act on rather than read,
+    // so it gets its own line rather than being folded into the timing note.
+    if (a.upload) {
+      const f = document.createElement('p');
+      f.className = 'ans-file';
+      const tag = document.createElement('strong');
+      tag.textContent = 'File: ';
+      f.append(tag, document.createTextNode(`${a.upload.filename} (${Math.round(a.upload.size / 1000)} KB)`));
+      const note = document.createElement('span');
+      note.className = 'muted';
+      // Airtable's attachment urls expire, so pointing at the row is the link that keeps working.
+      note.textContent = ' — open it from the Files column on this candidate\u2019s Airtable row. Download it rather than previewing it: it came from outside.';
+      f.append(note);
+      wrap.append(f);
+    }
 
     const meta = document.createElement('p');
     meta.className = 'muted small ans-meta';
