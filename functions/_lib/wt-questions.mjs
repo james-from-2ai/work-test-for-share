@@ -36,6 +36,13 @@ export const INTEGRITY = { blockPaste: false };
  * whole sitting, and no going back. See the header of wt-engine.mjs for why the second of those
  * is a decision about what the test measures rather than a presentation choice.
  */
+/**
+ * Everything on the instructions page that is not generated from the settings: the task-specific
+ * rules, the prose, and who to write to. The rules the engine enforces are written by the engine
+ * (see introFor in wt-engine.mjs), so nothing here can contradict what the test actually does.
+ */
+export const INTRO = {};
+
 export const TIMING = { mode: 'total' };
 export const NAVIGATION = { back: false, edit: false };
 

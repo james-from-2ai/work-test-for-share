@@ -33,7 +33,7 @@
  */
 
 import {
-  QUESTIONS, BRIEFS, SECTIONS, DURATION_SEC, GRACE_SEC, INTEGRITY, TIMING, NAVIGATION,
+  QUESTIONS, BRIEFS, SECTIONS, DURATION_SEC, GRACE_SEC, INTEGRITY, TIMING, NAVIGATION, INTRO,
 } from './wt-questions.mjs';
 import { sanitizeRich, richIsEmpty, richToText, richWordCount } from './wt-rich.mjs';
 import {
@@ -101,6 +101,130 @@ export function config(overrides = {}) {
         ? overrides.integrity.blockPaste === true
         : INTEGRITY.blockPaste === true,
     },
+    intro: overrides.intro && typeof overrides.intro === 'object' ? overrides.intro : (INTRO || {}),
+  };
+}
+
+/**
+ * The rules shown on the instructions page, worked out from what the test is actually set to do.
+ *
+ * These used to be hardcoded in index.html, which meant the page could promise things that were
+ * no longer true: it told every candidate "you cannot go back" and "the clock does not stop"
+ * regardless of the settings, and named a number of parts that was simply the number the original
+ * task happened to have. That is the worst place in the whole product to be wrong, because it is
+ * where we make promises to someone who is about to be assessed on them.
+ *
+ * So the engine authors them. It is the thing that enforces these rules, so it is the only thing
+ * that can describe them without drifting. Anything task-specific ("Part 1 needs a spreadsheet")
+ * is the author's to add, and comes from `intro.rules` in the spec.
+ */
+export function introFor(cfg) {
+  const rules = [];
+  const t = cfg.timing;
+
+  if (t.mode === 'none') {
+    rules.push({
+      lead: 'There is no time limit.',
+      text: 'Take the time you need. Nothing expires while you are working and there is no countdown.',
+    });
+  } else if (t.mode === 'section') {
+    rules.push({
+      lead: 'Each part has its own time limit.',
+      text: 'When a part runs out of time you move on to the next one, and anything you did not reach in '
+        + 'that part is recorded as not reached. The clocks run on our server, so refreshing the page, '
+        + 'closing the tab or opening this on another device will not give you more time.',
+    });
+  } else {
+    rules.push({
+      lead: 'The clock does not stop or restart.',
+      text: 'It runs on our server, so refreshing the page, closing the tab, or opening this on another '
+        + 'device will not give you more time.',
+    });
+  }
+
+  if (cfg.navigation.edit) {
+    rules.push({
+      lead: 'You can go back and change your answers.',
+      text: 'Earlier answers can be revised for as long as you have time left. If a change sends you down '
+        + 'a different path, the answers you gave after it are discarded, and we will ask you before that '
+        + 'happens.',
+    });
+  } else if (cfg.navigation.back) {
+    rules.push({
+      lead: 'You can look back, but not change anything.',
+      text: 'You can re-read what you have already submitted, which helps when a later question refers to '
+        + 'an earlier one. Submitted answers are final.',
+    });
+  } else {
+    rules.push({
+      lead: 'You cannot go back.',
+      text: 'One question at a time. Once you continue, that answer is final and the next question appears. '
+        + 'Do your thinking first, then write your answer.',
+    });
+  }
+
+  rules.push({
+    lead: 'We only accept your first submission.',
+    text: 'Coming back with the same email address returns you to this same session rather than starting a '
+      + 'new one.',
+  });
+
+  const anyRich = cfg.questions.some((q) => q.type === 'rich');
+  if (anyRich && !cfg.integrity.blockPaste) {
+    rules.push({
+      lead: 'You can format your answers.',
+      text: 'The answer boxes take headings, subheadings, bold, italic, underline and lists. Pasting from a '
+        + 'document keeps the formatting we support and drops the rest.',
+    });
+  } else if (anyRich) {
+    rules.push({
+      lead: 'You can format your answers.',
+      text: 'The answer boxes take headings, subheadings, bold, italic, underline and lists.',
+    });
+  }
+
+  if (cfg.integrity.blockPaste) {
+    rules.push({
+      lead: 'Pasting is switched off.',
+      text: 'Answers have to be typed, including anything you worked out somewhere else.',
+    });
+  }
+
+  const withFiles = cfg.questions.filter((q) => attachmentOf(q) !== 'none');
+  if (withFiles.length) {
+    const kinds = new Set(withFiles.flatMap((q) => acceptOf(q)));
+    const eitherOr = withFiles.some((q) => requireOf(q) === 'either');
+    rules.push({
+      lead: 'Some answers take a file.',
+      text: `You can attach a ${describeAllowed([...kinds])}, up to `
+        + `${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB.`
+        + (eitherOr ? ' Where a question accepts either, writing it out or attaching a file is enough on its own.' : ''),
+    });
+  }
+
+  // Author additions last, so the rules the engine actually enforces are read first.
+  const extra = Array.isArray(cfg.intro.rules) ? cfg.intro.rules : [];
+  for (const r of extra) {
+    if (!r) continue;
+    const lead = clamp(typeof r === 'string' ? '' : r.lead, 120).trim();
+    const text = clamp(typeof r === 'string' ? r : r.text, 600).trim();
+    if (lead || text) rules.push({ lead, text });
+  }
+
+  return {
+    blurb: clamp(cfg.intro.blurb, 800).trim() || null,
+    rules,
+    sections: (Array.isArray(cfg.intro.sections) ? cfg.intro.sections : [])
+      .map((s) => ({ heading: clamp(s && s.heading, 120).trim(), text: clamp(s && s.text, 2000).trim() }))
+      .filter((s) => s.heading || s.text),
+    closing: clamp(cfg.intro.closing, 1000).trim() || null,
+    // Kept as a field rather than left inside the closing text, because it has to become a real
+    // mailto link and no author-supplied text is ever rendered as markup. Validated here so the
+    // page can build the href without having to think about what is in it.
+    contactEmail: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(cfg.intro.contactEmail || '').trim())
+      ? String(cfg.intro.contactEmail).trim()
+      : null,
+    startLabel: t.mode === 'none' ? 'I understand, begin' : 'I understand, start the clock',
   };
 }
 
@@ -480,7 +604,10 @@ function view(rec, now, cfg, extra = {}) {
   }
   // On the instructions screen there is no current question, but the shape of the task is
   // exactly what someone deciding whether to press start wants to see.
-  if (phase === 'ready') out.progress = progressOf([], firstQuestionId(cfg.questions), cfg);
+  if (phase === 'ready') {
+    out.progress = progressOf([], firstQuestionId(cfg.questions), cfg);
+    out.intro = introFor(cfg);
+  }
   return out;
 }
 

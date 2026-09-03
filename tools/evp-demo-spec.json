@@ -1,56 +1,123 @@
 {
   "notes": "Demo of the gated two-part shape Sarah described for the EVP role: Part 1 must be submitted before Part 2 is seen, and the Part 1 decision selects which of three Part 2 tasks the candidate gets. Part 3 is the same for everyone. Placeholder wording throughout; replace it in the builder before this goes near a real candidate.",
-
   "durationSec": 5400,
-  "timing": { "mode": "total" },
-  "navigation": { "back": false, "edit": false },
-  "integrity": { "blockPaste": false },
-
+  "timing": {
+    "mode": "total"
+  },
+  "navigation": {
+    "back": false,
+    "edit": false
+  },
+  "integrity": {
+    "blockPaste": false
+  },
+  "intro": {
+    "rules": [
+      {
+        "lead": "You can use AI and a calculator.",
+        "text": "We are an AI-forward organization and we would rather see how you work with the tools you actually use."
+      },
+      {
+        "lead": "If you run low on time, do not try to finish everything.",
+        "text": "Instead, explain what other main steps you would take, and leave the rest unfinished. We would much rather read that than a rushed attempt at completeness."
+      },
+      {
+        "lead": "Part 1 needs the data.",
+        "text": "Open the link in the brief, work in your own copy in another tab, and come back here to write up or attach what you produced."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "What we are looking for",
+        "text": "When you are communicating internally with our team, we value clarity, brevity, and reasoning transparency over formal or academic prose. We are less interested in the perfect answer than in seeing clearly described logic, well-stated uncertainties, and a strong knack for discerning which information is the highest priority."
+      },
+      {
+        "heading": "Ambiguity is deliberate",
+        "text": "Some aspects of this task are intentionally vague and require you to apply judgement. Where something is unclear, make a reasonable assumption and label it. You do not need to email us to ask."
+      }
+    ],
+    "closing": "Please do not share this task with anyone outside Evidence Action / 2AI. If you need a different format or an accommodation because of a disability, write to us before you begin and we will sort it out:",
+    "contactEmail": "careers@aiaccessinitiative.org"
+  },
   "sections": [
-    { "id": "p1", "label": "Part 1", "summary": "Read the data and make the call", "recommendedMin": 50, "limitMin": 50 },
-    { "id": "p2", "label": "Part 2", "summary": "Build out the decision you made", "recommendedMin": 35, "limitMin": 35 },
-    { "id": "p3", "label": "Part 3", "summary": "How you worked", "recommendedMin": 5, "limitMin": 5 }
+    {
+      "id": "p1",
+      "label": "Part 1",
+      "summary": "Read the data and make the call",
+      "recommendedMin": 50,
+      "limitMin": 50
+    },
+    {
+      "id": "p2",
+      "label": "Part 2",
+      "summary": "Build out the decision you made",
+      "recommendedMin": 35,
+      "limitMin": 35
+    },
+    {
+      "id": "p3",
+      "label": "Part 3",
+      "summary": "How you worked",
+      "recommendedMin": 5,
+      "limitMin": 5
+    }
   ],
-
   "briefs": {
     "part1": {
       "section": "Part 1 of 3",
       "heading": "The situation",
       "blocks": [
-        { "type": "p", "text": "Placeholder scenario. A program has been running in one country for two years. The results are good but not uniformly so, the budget for next year is roughly flat, and the country team has asked for a decision before the next planning round." },
+        {
+          "type": "p",
+          "text": "Placeholder scenario. A program has been running in one country for two years. The results are good but not uniformly so, the budget for next year is roughly flat, and the country team has asked for a decision before the next planning round."
+        },
         {
           "type": "quote",
           "label": "Slack from your manager, 9:05am",
           "text": "Morning! Can you look at the numbers and tell me what we should do next year. I can see three ways to go and I do not mind which, but I do want to know why, and I want the reasoning written down somewhere I can forward."
         },
-        { "type": "link", "label": "Open the program data", "url": "https://docs.google.com/spreadsheets/d/1kmqSBXvvBXPU2G2a9JId2zhj1kF80LZzrgCXE8DFOe8/edit?usp=sharing" },
-        { "type": "p", "text": "Work in your own copy of the data. You can write your answer here, or attach it as a PDF or Word document, whichever suits you better." }
+        {
+          "type": "link",
+          "label": "Open the program data",
+          "url": "https://docs.google.com/spreadsheets/d/1kmqSBXvvBXPU2G2a9JId2zhj1kF80LZzrgCXE8DFOe8/edit?usp=sharing"
+        },
+        {
+          "type": "p",
+          "text": "Work in your own copy of the data. You can write your answer here, or attach it as a PDF or Word document, whichever suits you better."
+        }
       ]
     },
-
     "hold": {
       "section": "Part 2 of 3",
       "heading": "You chose to keep the program as it is",
       "blocks": [
-        { "type": "p", "text": "Placeholder. Your manager agrees and wants the case written up for the country team, who were expecting to be asked to grow." }
+        {
+          "type": "p",
+          "text": "Placeholder. Your manager agrees and wants the case written up for the country team, who were expecting to be asked to grow."
+        }
       ]
     },
     "grow": {
       "section": "Part 2 of 3",
       "heading": "You chose to grow the program in country",
       "blocks": [
-        { "type": "p", "text": "Placeholder. Your manager agrees, and now wants to know what growing actually costs and what has to be true for it to work." }
+        {
+          "type": "p",
+          "text": "Placeholder. Your manager agrees, and now wants to know what growing actually costs and what has to be true for it to work."
+        }
       ]
     },
     "expand": {
       "section": "Part 2 of 3",
       "heading": "You chose to expand into new geographies",
       "blocks": [
-        { "type": "p", "text": "Placeholder. Your manager agrees in principle, and the first question from the funder will be why these geographies and not others." }
+        {
+          "type": "p",
+          "text": "Placeholder. Your manager agrees in principle, and the first question from the funder will be why these geographies and not others."
+        }
       ]
     }
   },
-
   "questions": [
     {
       "id": "p1_analysis",
@@ -58,7 +125,10 @@
       "brief": "part1",
       "type": "rich",
       "require": "either",
-      "accept": ["pdf", "docx"],
+      "accept": [
+        "pdf",
+        "docx"
+      ],
       "prompt": "What do the numbers tell you, and what are you least sure about?",
       "context": "Write it here, or attach a PDF or Word document instead. Either is fine, and one is enough.",
       "maxLength": 4000
@@ -71,19 +141,30 @@
       "prompt": "What should we do next year?",
       "context": "Pick one. Part 2 follows from this, and you will not be able to come back and change it.",
       "options": [
-        { "label": "Keep the program as it is", "next": "hold_case" },
-        { "label": "Grow it in country", "next": "grow_cost" },
-        { "label": "Expand into new geographies", "next": "expand_where" }
+        {
+          "label": "Keep the program as it is",
+          "next": "hold_case"
+        },
+        {
+          "label": "Grow it in country",
+          "next": "grow_cost"
+        },
+        {
+          "label": "Expand into new geographies",
+          "next": "expand_where"
+        }
       ]
     },
-
     {
       "id": "hold_case",
       "section": "p2",
       "brief": "hold",
       "type": "rich",
       "require": "either",
-      "accept": ["pdf", "docx"],
+      "accept": [
+        "pdf",
+        "docx"
+      ],
       "prompt": "Make the case for holding steady to a country team who expected to be told to grow.",
       "context": "Write it here or attach it, whichever you prefer.",
       "maxLength": 4000,
@@ -95,7 +176,10 @@
       "brief": "grow",
       "type": "rich",
       "require": "either",
-      "accept": ["pdf", "docx"],
+      "accept": [
+        "pdf",
+        "docx"
+      ],
       "prompt": "What does growing cost, and what has to be true for it to be worth it?",
       "context": "Write it here or attach it, whichever you prefer.",
       "maxLength": 4000,
@@ -107,13 +191,15 @@
       "brief": "expand",
       "type": "rich",
       "require": "either",
-      "accept": ["pdf", "docx"],
+      "accept": [
+        "pdf",
+        "docx"
+      ],
       "prompt": "Which geographies, and why those rather than the others?",
       "context": "Write it here or attach it, whichever you prefer.",
       "maxLength": 4000,
       "next": "ai_use"
     },
-
     {
       "id": "ai_use",
       "section": "p3",

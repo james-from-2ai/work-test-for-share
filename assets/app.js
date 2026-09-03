@@ -195,23 +195,112 @@ function renderIdentify(state) {
   }
 }
 
+/**
+ * The opening sentence: how long, how many questions, how many parts.
+ *
+ * Every part of this used to be hardcoded, including "across two parts", which was simply the
+ * number the original task happened to have. A branching test has no single length until the
+ * branches resolve, so where that is the case it says the honest range rather than picking a
+ * number that will be wrong for most candidates.
+ */
+function summarySentence(state) {
+  const range = state.totalRange;
+  const count = state.total != null ? String(state.total)
+    : range && range.min !== range.max ? `${range.min} to ${range.max}`
+    : range ? String(range.max)
+    : 'several';
+
+  const parts = state.progress ? state.progress.sections.filter((s) => s.state !== 'skipped').length : 0;
+  const partsBit = parts > 1 ? ` across ${parts} parts` : '';
+
+  const timing = state.timing && state.timing.mode;
+  if (timing === 'none') {
+    return `This task has ${count} questions${partsBit} and is not timed. Read this page properly before you begin.`;
+  }
+  if (timing === 'section') {
+    return `This task has ${count} questions${partsBit}, and each part has its own time limit. `
+      + 'Read this page properly. The first clock starts when you press the button at the bottom.';
+  }
+  return `This task is ${humanDuration(state.durationSec)} long and has ${count} questions${partsBit}. `
+    + 'Read this page properly. The clock starts when you press the button at the bottom, and it does not stop.';
+}
+
+/**
+ * The rules and the prose around them, all of it sent by the server.
+ *
+ * The rules describe what the engine enforces, so the engine is what writes them: a page that
+ * hardcodes "you cannot go back" carries on saying it long after someone has turned that setting
+ * on, and this is the page where we make promises to a candidate about to be assessed.
+ */
+function renderIntro(intro) {
+  if (!intro) return;
+
+  const blurb = hook('blurb');
+  if (intro.blurb) {
+    blurb.textContent = intro.blurb;
+    blurb.hidden = false;
+  }
+
+  const list = hook('rules');
+  list.replaceChildren();
+  for (const rule of intro.rules || []) {
+    const li = document.createElement('li');
+    if (rule.lead) {
+      const strong = document.createElement('strong');
+      strong.textContent = rule.lead;
+      li.append(strong, document.createTextNode(rule.text ? ` ${rule.text}` : ''));
+    } else {
+      li.textContent = rule.text || '';
+    }
+    list.append(li);
+  }
+
+  const prose = hook('prose');
+  prose.replaceChildren();
+  for (const section of intro.sections || []) {
+    if (section.heading) {
+      const h = document.createElement('h2');
+      h.className = 'sub';
+      h.textContent = section.heading;
+      prose.append(h);
+    }
+    if (section.text) {
+      for (const para of section.text.split(/\n{2,}/)) {
+        const p = document.createElement('p');
+        p.textContent = para.trim();
+        if (para.trim()) prose.append(p);
+      }
+    }
+  }
+
+  const closing = hook('closing');
+  if (intro.closing || intro.contactEmail) {
+    closing.textContent = intro.closing || '';
+    if (intro.contactEmail) {
+      // Built here rather than parsed out of the closing text, because nothing an author writes
+      // is ever rendered as markup and an address someone can actually click is worth having.
+      const a = document.createElement('a');
+      a.href = `mailto:${intro.contactEmail}`;
+      a.textContent = intro.contactEmail;
+      if (intro.closing) closing.append(document.createTextNode(' '));
+      closing.append(a);
+    }
+    closing.hidden = false;
+  }
+}
+
 function renderInstructions(state) {
   screen('instructions');
   const first = (state.candidate.name || '').trim().split(/\s+/)[0];
   if (first) hook('greeting').textContent = `${first}, before you start`;
-  hook('duration').textContent = humanDuration(state.durationSec);
-  // A branching test has no single length until the branches resolve, so say the honest range
-  // rather than pick a number that will turn out to be wrong for most people.
-  const range = state.totalRange;
-  hook('count').textContent = state.total != null ? String(state.total)
-    : range && range.min !== range.max ? `${range.min} to ${range.max}`
-    : range ? String(range.max)
-    : 'several';
+  hook('summary').textContent = summarySentence(state);
+  renderIntro(state.intro);
   hook('who').textContent = state.candidate.name ? `Submitting as ${state.candidate.name}` : '';
   // Show the shape of the task before they commit to starting it, not only once the clock runs.
   renderProgress(state.progress, { preview: true });
 
   const btn = hook('begin');
+  if (state.intro && state.intro.startLabel) btn.textContent = state.intro.startLabel;
   btn.addEventListener('click', async () => {
     btn.disabled = true;
     btn.textContent = 'Starting…';

@@ -272,6 +272,134 @@ test('a question can take a file alongside text without insisting on one', async
   assert.equal(done.phase, 'done');
 });
 
+/* --------------------------------------------------- what candidates are told ----- */
+
+/**
+ * The instructions page is where promises are made to someone about to be assessed, so the rules
+ * on it have to describe the test that is actually configured. It used to be hardcoded HTML,
+ * which meant it went on saying "you cannot go back" and "the clock does not stop" long after
+ * either had stopped being true.
+ */
+const leads = (res) => res.intro.rules.map((r) => r.lead);
+
+test('the instructions describe a single clock when there is one', async () => {
+  const store = memStore();
+  const cfg = make({ durationSec: 3600 });
+  const [c] = await createCandidates(store, [{ name: 'A', email: 'a@example.com' }]);
+  const res = await handle(store, { action: 'state', token: c.token }, T0, cfg);
+  assert.equal(res.phase, 'ready');
+  assert.ok(leads(res).includes('The clock does not stop or restart.'));
+  assert.equal(res.intro.startLabel, 'I understand, start the clock');
+});
+
+test('an untimed test does not tell anyone about a clock', async () => {
+  const store = memStore();
+  const cfg = make({ timing: { mode: 'none' } });
+  const [c] = await createCandidates(store, [{ name: 'A', email: 'a@example.com' }]);
+  const res = await handle(store, { action: 'state', token: c.token }, T0, cfg);
+  assert.ok(leads(res).includes('There is no time limit.'));
+  assert.equal(leads(res).some((l) => l.includes('clock does not stop')), false);
+  // Pressing a button labelled "start the clock" on an untimed test is a small lie of its own.
+  assert.equal(res.intro.startLabel, 'I understand, begin');
+});
+
+test('per-part limits are explained as per-part limits', async () => {
+  const store = memStore();
+  const cfg = make({ timing: { mode: 'section' } });
+  const [c] = await createCandidates(store, [{ name: 'A', email: 'a@example.com' }]);
+  const res = await handle(store, { action: 'state', token: c.token }, T0, cfg);
+  assert.ok(leads(res).includes('Each part has its own time limit.'));
+});
+
+test('the going-back rule follows the setting rather than a hardcoded promise', async () => {
+  const forOptions = async (navigation) => {
+    const store = memStore();
+    const cfg = make(navigation ? { navigation } : {});
+    const [c] = await createCandidates(store, [{ name: 'A', email: 'a@example.com' }]);
+    return leads(await handle(store, { action: 'state', token: c.token }, T0, cfg));
+  };
+
+  assert.ok((await forOptions(null)).includes('You cannot go back.'));
+  assert.ok((await forOptions({ back: true })).includes('You can look back, but not change anything.'));
+  assert.ok((await forOptions({ back: true, edit: true })).includes('You can go back and change your answers.'));
+
+  // And never two of them at once, which is what a hardcoded list plus a generated one would do.
+  const both = await forOptions({ back: true, edit: true });
+  assert.equal(both.filter((l) => l.startsWith('You can') || l.startsWith('You cannot')).length, 1);
+});
+
+test('blocked pasting is stated, and not contradicted by the formatting rule', async () => {
+  const store = memStore();
+  const cfg = config({
+    sections: SECTIONS,
+    questions: [{ id: 'a', section: 'p1', type: 'rich', prompt: 'A', next: null }],
+    integrity: { blockPaste: true },
+  });
+  const [c] = await createCandidates(store, [{ name: 'A', email: 'a@example.com' }]);
+  const res = await handle(store, { action: 'state', token: c.token }, T0, cfg);
+  assert.ok(leads(res).includes('Pasting is switched off.'));
+  const formatting = res.intro.rules.find((r) => r.lead === 'You can format your answers.');
+  assert.equal(formatting.text.includes('Pasting'), false, 'told them pasting keeps formatting while blocking it');
+});
+
+test('files are only mentioned when a question actually takes one', async () => {
+  const noFiles = memStore();
+  const plain = make();
+  const [a] = await createCandidates(noFiles, [{ name: 'A', email: 'a@example.com' }]);
+  const without = await handle(noFiles, { action: 'state', token: a.token }, T0, plain);
+  assert.equal(leads(without).includes('Some answers take a file.'), false);
+
+  const withFiles = memStore();
+  const cfg = config({
+    sections: SECTIONS,
+    questions: [{ id: 'a', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], prompt: 'A', next: null }],
+  });
+  const [b] = await createCandidates(withFiles, [{ name: 'B', email: 'b@example.com' }]);
+  const res = await handle(withFiles, { action: 'state', token: b.token }, T0, cfg);
+  const rule = res.intro.rules.find((r) => r.lead === 'Some answers take a file.');
+  assert.match(rule.text, /PDF/);
+  assert.match(rule.text, /enough on its own/, 'did not explain what "either" means');
+});
+
+test('the author’s own rules and prose come through, after the generated ones', async () => {
+  const store = memStore();
+  const cfg = make({
+    intro: {
+      blurb: 'A note before the rules.',
+      rules: [{ lead: 'Part 1 needs a spreadsheet.', text: 'Work in your own copy.' }],
+      sections: [{ heading: 'What we are looking for', text: 'Clarity over polish.' }],
+      closing: 'Please do not share this task.',
+      contactEmail: 'careers@aiaccessinitiative.org',
+    },
+  });
+  const [c] = await createCandidates(store, [{ name: 'A', email: 'a@example.com' }]);
+  const res = await handle(store, { action: 'state', token: c.token }, T0, cfg);
+
+  assert.equal(res.intro.blurb, 'A note before the rules.');
+  assert.equal(res.intro.sections[0].heading, 'What we are looking for');
+  assert.equal(res.intro.closing, 'Please do not share this task.');
+  assert.equal(res.intro.contactEmail, 'careers@aiaccessinitiative.org');
+  // Last, so the rules the engine actually enforces are read first.
+  assert.equal(leads(res)[leads(res).length - 1], 'Part 1 needs a spreadsheet.');
+});
+
+test('a contact address that is not an address is dropped rather than linked', async () => {
+  const store = memStore();
+  const cfg = make({ intro: { contactEmail: 'javascript:alert(1)' } });
+  const [c] = await createCandidates(store, [{ name: 'A', email: 'a@example.com' }]);
+  const res = await handle(store, { action: 'state', token: c.token }, T0, cfg);
+  assert.equal(res.intro.contactEmail, null);
+});
+
+test('the instructions are not sent once the test is under way', async () => {
+  const store = memStore();
+  const cfg = make();
+  const token = await started(store, cfg);
+  const res = await handle(store, { action: 'state', token }, T0 + 1000, cfg);
+  assert.equal(res.phase, 'running');
+  assert.equal(res.intro, undefined);
+});
+
 /* ------------------------------------------------------------ paste ---------------- */
 
 test('paste blocking is a test-wide setting a question can override', async () => {

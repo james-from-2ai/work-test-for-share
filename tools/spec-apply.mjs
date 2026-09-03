@@ -144,6 +144,13 @@ export const TIMING = ${lit(spec.timing || { mode: 'total' })};
 export const NAVIGATION = ${lit(spec.navigation || { back: false, edit: false })};
 
 /**
+ * The parts of the instructions page an author writes: task-specific rules, the prose after
+ * them, and a contact address. The rules describing what the engine enforces are generated from
+ * the settings, so they cannot drift out of step with the test.
+ */
+export const INTRO = ${lit(spec.intro || {})};
+
+/**
  * The parts of the task, in order, with how long each is expected to take. \`recommendedMin\`
  * drives the weighting of the progress bar, so a candidate can see which part is the bulk of
  * the work rather than counting questions and assuming the halfway question is the halfway

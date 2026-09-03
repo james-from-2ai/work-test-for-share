@@ -279,6 +279,7 @@ function migrate(s) {
   s.timing = s.timing && ['total', 'section', 'none'].includes(s.timing.mode) ? s.timing : { mode: 'total' };
   s.navigation = { back: !!(s.navigation && s.navigation.back), edit: !!(s.navigation && s.navigation.edit) };
   s.integrity = { blockPaste: !!(s.integrity && s.integrity.blockPaste) };
+  s.intro = s.intro && typeof s.intro === 'object' ? s.intro : {};
   s.notes = typeof s.notes === 'string' ? s.notes : '';
   s.briefs = s.briefs && typeof s.briefs === 'object' ? s.briefs : {};
   s.sections = Array.isArray(s.sections) && s.sections.length ? s.sections : STARTER().sections;
@@ -580,9 +581,65 @@ function drawSetup(stage) {
   })));
   page.append(parts);
 
-  /* 5. Notes */
+  /* 5. What candidates are told */
+  const intro = spec.intro = spec.intro && typeof spec.intro === 'object' ? spec.intro : {};
+  const told = el('section', { class: 'block' },
+    el('h2', { text: '5. What candidates are told before they start' }),
+    el('p', { class: 'lede', text: 'The rules about time, going back, pasting and files are written for you from the settings above, so they can never say something the test does not do. Everything here is what only you know: the task-specific rules and the prose around them.' }));
+
+  told.append(field('Opening note (optional)', area(intro.blurb, (v) => { if (v) intro.blurb = v; else delete intro.blurb; touch(); }, 3),
+    'Sits under the summary sentence, above the rules.'));
+
+  told.append(el('p', { class: 'colhead', text: 'Your own rules' }));
+  intro.rules = Array.isArray(intro.rules) ? intro.rules : [];
+  intro.rules.forEach((r, i) => {
+    if (typeof r === 'string') intro.rules[i] = { lead: '', text: r };
+    const rule = intro.rules[i];
+    const box = el('div', { class: 'sub' });
+    box.append(el('div', { class: 'head' },
+      el('span', { class: 'n', text: `Rule ${i + 1}` }),
+      el('span', { class: 'grow' }),
+      el('button', { class: 'btn tiny', text: '↑', onclick: () => { if (i > 0) { [intro.rules[i - 1], intro.rules[i]] = [intro.rules[i], intro.rules[i - 1]]; draw(); } } }),
+      el('button', { class: 'btn tiny', text: '↓', onclick: () => { if (i < intro.rules.length - 1) { [intro.rules[i + 1], intro.rules[i]] = [intro.rules[i], intro.rules[i + 1]]; draw(); } } }),
+      el('button', { class: 'btn tiny danger', text: '✕', onclick: () => { intro.rules.splice(i, 1); draw(); } })));
+    box.append(field('The bold bit', input(rule.lead, (v) => { rule.lead = v; touch(); }), 'For example "Part 1 needs a spreadsheet."'));
+    box.append(field('The rest', area(rule.text, (v) => { rule.text = v; touch(); }, 2)));
+    told.append(box);
+  });
+  told.append(el('div', { class: 'btns' }, el('button', {
+    class: 'btn', text: '+ Add a rule',
+    onclick: () => { intro.rules.push({ lead: '', text: '' }); draw(); },
+  })));
+
+  told.append(el('p', { class: 'colhead', text: 'Prose after the rules' }));
+  intro.sections = Array.isArray(intro.sections) ? intro.sections : [];
+  intro.sections.forEach((s, i) => {
+    const box = el('div', { class: 'sub' });
+    box.append(el('div', { class: 'head' },
+      el('span', { class: 'n', text: `Section ${i + 1}` }),
+      el('span', { class: 'grow' }),
+      el('button', { class: 'btn tiny', text: '↑', onclick: () => { if (i > 0) { [intro.sections[i - 1], intro.sections[i]] = [intro.sections[i], intro.sections[i - 1]]; draw(); } } }),
+      el('button', { class: 'btn tiny', text: '↓', onclick: () => { if (i < intro.sections.length - 1) { [intro.sections[i + 1], intro.sections[i]] = [intro.sections[i], intro.sections[i + 1]]; draw(); } } }),
+      el('button', { class: 'btn tiny danger', text: '✕', onclick: () => { intro.sections.splice(i, 1); draw(); } })));
+    box.append(field('Heading', input(s.heading, (v) => { s.heading = v; touch(); })));
+    box.append(field('Text', area(s.text, (v) => { s.text = v; touch(); }, 4), 'A blank line starts a new paragraph.'));
+    told.append(box);
+  });
+  told.append(el('div', { class: 'btns' }, el('button', {
+    class: 'btn', text: '+ Add a section',
+    onclick: () => { intro.sections.push({ heading: '', text: '' }); draw(); },
+  })));
+
+  told.append(el('div', { class: 'row', style: 'margin-top:0.9rem' },
+    field('Small print at the bottom (optional)', area(intro.closing, (v) => { if (v) intro.closing = v; else delete intro.closing; touch(); }, 3)),
+    field('Contact address (optional)', input(intro.contactEmail, (v) => { if (v) intro.contactEmail = v; else delete intro.contactEmail; touch(); }),
+      'Shown after the small print as a link they can click. Anything that is not an email address is ignored.')));
+
+  page.append(told);
+
+  /* 6. Notes */
   page.append(el('section', { class: 'block' },
-    el('h2', { text: '5. Notes for whoever maintains this' }),
+    el('h2', { text: '6. Notes for whoever maintains this' }),
     el('p', { class: 'lede', text: 'Written into the header of the generated file, so it survives regeneration. Everything else in that file is overwritten.' }),
     field('Notes', area(spec.notes, (v) => { spec.notes = v; touch(); }, 4),
       'Where the task came from, what is deliberately ambiguous, anything the next person would otherwise guess at. Candidates never see this.')));
@@ -1150,6 +1207,7 @@ function specJson() {
   return JSON.stringify({
     durationSec: spec.durationSec,
     notes: spec.notes || '',
+    intro: spec.intro || {},
     timing: spec.timing,
     navigation: spec.navigation,
     integrity: spec.integrity,

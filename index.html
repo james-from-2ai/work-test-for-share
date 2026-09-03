@@ -65,27 +65,21 @@
   <section class="card">
     <p class="eyebrow">Candidate instructions</p>
     <h1 data-hook="greeting">Before you start</h1>
-    <p>This task is <strong data-hook="duration"></strong> long and has <strong data-hook="count"></strong> questions across two parts. Read this page properly. The clock starts when you press the button at the bottom, and it does not stop.</p>
+    <!-- Everything below is filled in by the server. The rules describe what the engine actually
+         enforces, so the engine writes them: this page used to hardcode "you cannot go back" and
+         "the clock does not stop" and a fixed number of parts, and went on saying all three long
+         after the settings said otherwise. Anything task-specific comes from the spec's intro. -->
+    <p data-hook="summary"></p>
+    <p data-hook="blurb" hidden></p>
 
     <div class="track" data-hook="track" aria-hidden="true"></div>
     <p class="track-note muted small" data-hook="tracknote"></p>
 
-    <ul class="rules">
-      <li><strong>You can use AI and a calculator.</strong> We are an AI-forward organization and we would rather see how you work with the tools you actually use. But we will only accept your first submission of this work test.</li>
-      <li><strong>If you run low on time, do not try to finish everything.</strong> Instead, explain what other main steps you would take, and leave the rest unfinished. We would much rather read that than a rushed attempt at completeness.</li>
-      <li><strong>The clock does not stop or restart.</strong> It runs on our server, so refreshing the page, closing the tab, or opening this on another device will not give you more time.</li>
-      <li><strong>You cannot go back.</strong> One question at a time. Once you continue, that answer is final and the next question appears. Do your analysis first, then write your answers.</li>
-      <li><strong>Part 1 needs a spreadsheet.</strong> You will be given a link to messy data from the government and our Operations team. Work in your own copy, in another tab, and come back here to write up.</li>
-      <li><strong>You can format your answers.</strong> The answer boxes take headings, subheadings, bold, italic, underline, and lists, so structure a long answer however helps it read. Pasting from a document keeps the formatting we support and drops the rest.</li>
-    </ul>
+    <ul class="rules" data-hook="rules"></ul>
 
-    <h2 class="sub">What we are looking for</h2>
-    <p>When you are communicating internally with our team, we value clarity, brevity, and reasoning transparency over formal or academic prose. We are less interested in the perfect answer than in seeing clearly described logic, well-stated uncertainties, and a strong knack for discerning which information is the highest priority.</p>
+    <div data-hook="prose"></div>
 
-    <h2 class="sub">Ambiguity is deliberate</h2>
-    <p>Some aspects of this task are intentionally vague and require you to apply judgement. Where something is unclear, make a reasonable assumption and label it. You do not need to email us to ask.</p>
-
-    <p class="muted small">Please do not share this task with anyone outside Evidence Action / 2AI. If you need a different format or an accommodation because of a disability, email <a href="mailto:careers@aiaccessinitiative.org">careers@aiaccessinitiative.org</a> before you begin, and we will sort it out.</p>
+    <p class="muted small" data-hook="closing" hidden></p>
 
     <footer class="bar bottom">
       <span class="muted small" data-hook="who"></span>
