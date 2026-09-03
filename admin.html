@@ -43,7 +43,6 @@
   <strong>Demo.</strong> This is a public preview of 2AI's timed work test, for showing people how it works.
   Anything you type here is visible to anyone with the link, so use a made-up name and do not enter anything private.
   It is not a live application and nobody is assessed on it.
-  <div class="testing-bar" data-testing-toggle></div>
 </div><main class="wrap">
   <section class="card">
     <p class="eyebrow">Internal</p>
@@ -61,7 +60,7 @@
 
   <section class="card">
     <h1>Issue links</h1>
-    <p class="muted small">One candidate per line, as <code>Name, email@example.com</code>. Each gets a single-use link. Sending the email is up to you; nothing is emailed from here.</p>
+    <p class="muted small">One candidate per line, as <code>Name, email@example.com</code>. Each gets their own link, which always returns them to the same session. Sending the email is up to you; nothing is emailed from here.</p>
     <textarea id="people" placeholder="Amina Yusuf, amina@example.com&#10;Tom Baker, tom@example.com"></textarea>
     <div class="row" style="margin-top:0.6rem">
       <button class="primary" id="create">Create links</button>
@@ -87,11 +86,17 @@ function fail(msg) { const e = $('#err'); e.textContent = msg; e.hidden = !msg; 
 
 async function admin(action, extra = {}) {
   fail('');
-  const res = await fetch('/api/work-test-admin', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-admin-key': keyOf() },
-    body: JSON.stringify({ action, ...extra }),
-  });
+  let res;
+  try {
+    res = await fetch('/api/work-test-admin', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-admin-key': keyOf() },
+      body: JSON.stringify({ action, ...extra }),
+    });
+  } catch {
+    fail('Could not reach the server. Check your connection and try again.');
+    return { ok: false, error: 'network' };
+  }
   if (action === 'csv') return res;
   const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
   // The server may attach a diagnostic, but only to a caller who already sent a key, so a
@@ -189,7 +194,14 @@ function answersCell(r) {
 
     const body = document.createElement('div');
     body.className = 'ans-body';
-    renderAnswer(body, a.value);
+    if (a.skipped) {
+      const em = document.createElement('em');
+      em.className = 'muted';
+      em.textContent = 'not reached: the time for this part ran out';
+      body.append(em);
+    } else {
+      renderAnswer(body, a.value);
+    }
     wrap.append(body);
 
     // An attached file is the one thing on this page a reviewer has to act on rather than read,
@@ -203,7 +215,7 @@ function answersCell(r) {
       const note = document.createElement('span');
       note.className = 'muted';
       // Airtable's attachment urls expire, so pointing at the row is the link that keeps working.
-      note.textContent = ' — open it from the Files column on this candidate\u2019s Airtable row. Download it rather than previewing it: it came from outside.';
+      note.textContent = '. Open it from the Files column on this candidate\u2019s Airtable row, and download it rather than previewing it: it came from outside.';
       f.append(note);
       wrap.append(f);
     }
@@ -211,6 +223,7 @@ function answersCell(r) {
     const meta = document.createElement('p');
     meta.className = 'muted small ans-meta';
     const bits = [`${Math.round(a.msSpent / 1000)}s`];
+    if (a.revisions) bits.push(`revised ${a.revisions === 1 ? 'once' : `${a.revisions} times`}`);
     if (a.pastes) bits.push(`${a.pastes} paste${a.pastes > 1 ? 's' : ''}`);
     if (a.blurs) bits.push(`${a.blurs} tab switch${a.blurs > 1 ? 'es' : ''}`);
     meta.textContent = `(${bits.join(', ')})`;
@@ -326,6 +339,5 @@ $('#csv').addEventListener('click', async () => {
   URL.revokeObjectURL(url);
 });
 </script>
-<script src="assets/testing-toggle.js"></script>
 </body>
 </html>

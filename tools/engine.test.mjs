@@ -160,13 +160,23 @@ test('once time is up, nothing more is accepted', async () => {
   assert.equal(res.question, undefined, 'an expired candidate was still shown a question');
 });
 
-test('finish freezes a running test', async () => {
+test('finish freezes a running test, but only once the deadline has genuinely passed', async () => {
   const { store, token } = await fixture();
   await handle(store, { action: 'start', token }, T0);
-  const done = await handle(store, { action: 'finish', token }, T0 + 10_000);
+
+  // The page's clock is cosmetic and the page is not trusted, so a call ten seconds into a
+  // ninety-minute test must not end it. This used to be accepted, which meant a device with a
+  // wrong idea of the time could close a sitting early.
+  const early = await handle(store, { action: 'finish', token }, T0 + 10_000);
+  assert.equal(early.rejected, 'not_yet');
+  assert.equal(early.phase, 'running');
+  assert.equal(early.ranOut, false);
+
+  const late = T0 + DURATION_SEC * 1000 + 1_000;
+  const done = await handle(store, { action: 'finish', token }, late);
   assert.equal(done.phase, 'done');
   assert.equal(done.ranOut, true);
-  const after = await handle(store, { action: 'answer', token, index: 0, value: answerFor(0) }, T0 + 11_000);
+  const after = await handle(store, { action: 'answer', token, index: 0, value: answerFor(0) }, late + 1_000);
   assert.equal(after.rejected, 'done');
   assert.equal(after.answered, 0);
 });

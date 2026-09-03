@@ -1,5 +1,5 @@
 /**
- * Cloudflare KV wrapped in the tiny store interface engine.js expects: get / put / delete
+ * Cloudflare KV wrapped in the tiny store interface wt-engine.mjs expects: get / put / delete
  * over JSON values. Local development swaps in a file-backed store with the same three
  * methods (see tools/dev-server.mjs).
  *

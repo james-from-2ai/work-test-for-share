@@ -2,7 +2,8 @@
  * Cloudflare Pages Function: POST /api/work-test
  *
  * The candidate-facing endpoint for the timed work test, served at the site root in this copy.
- * Actions: hello, register, state, start, answer, review, reset, finish. Every rule that matters
+ * Actions: hello, register, state, start, answer, upload, back, forward, resume, review, reset,
+ * finish. Every rule that matters
  * lives in `functions/_lib/wt-engine.mjs`;
  * this file only picks the store and shapes the HTTP response.
  *

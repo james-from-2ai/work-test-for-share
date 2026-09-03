@@ -8,7 +8,7 @@
  *   [ { type: 'h2' | 'h3' | 'p' | 'bullet' | 'number',
  *       runs: [ { t: 'some text', b?: 1, i?: 1, u?: 1 } ] }, ... ]
  *
- * Why not just store HTML. Answers are rendered back on /work-test/admin.html, a page that
+ * Why not just store HTML. Answers are rendered back on admin.html, a page that
  * holds every candidate's submission and carries the admin key in its DOM. Storing candidate
  * HTML would mean the safety of that page rests on a sanitizer being airtight against a
  * hand-rolled POST. With this shape there is no markup anywhere in the pipeline: the admin page

@@ -1,13 +1,14 @@
 /**
- * All test rules live here. Storage is injected so the same code runs on Cloudflare KV in
- * production and on a file-backed store in tools/dev-server.mjs locally. If a rule is not
- * enforced in this file, it is not enforced at all: the client is treated as hostile.
+ * All test rules live here. Storage is injected so the same code runs against Airtable or KV in
+ * production and a file-backed store in tools/dev-server.mjs locally. If a rule is not enforced in
+ * this file, it is not enforced at all: the client is treated as hostile, and nothing it says
+ * about time, position or permission is believed without being checked here.
  *
- * THREE OF THE RULES BELOW ARE NOW SETTINGS. An author can turn on back navigation and editing
- * of submitted answers in the builder. Both default to OFF, and both genuinely change what the
- * test measures rather than just how it feels: a forward-only test asks "what is your judgment
- * with what you have now", and one you can revise asks something else. Where a rule is
- * conditional it says so, and where it is absolute it still is.
+ * TWO OF THE RULES BELOW ARE SETTINGS. An author can turn on looking back at earlier answers, and
+ * separately on changing them. Both default to OFF, and both genuinely change what the test
+ * measures rather than just how it feels: a forward-only test asks "what is your judgment with
+ * what you have now", and one you can revise asks something else. Where a rule is conditional it
+ * says so, and where it is absolute it still is.
  *
  * The three guarantees the client cannot break, and how:
  *
@@ -37,11 +38,12 @@ import {
 } from './wt-questions.mjs';
 import { sanitizeRich, richIsEmpty, richToText, richWordCount } from './wt-rich.mjs';
 import {
-  currentQuestionId, questionById, firstQuestionId, optionLabels,
+  currentQuestionId, questionById, firstQuestionId, optionLabels, nextIdAfter,
   remainingRange, sectionOutlook,
 } from './wt-flow.mjs';
 import { checkUpload, acceptAttribute, describeAllowed, MAX_UPLOAD_BYTES } from './wt-files.mjs';
-import { nextIdAfter } from './wt-flow.mjs';
+
+const clamp = (s, n) => String(s == null ? '' : s).slice(0, n);
 
 const KEY = (token) => `c:${token}`;
 /**
@@ -53,9 +55,9 @@ const EMAIL_KEY = (email) => `e:${String(email).trim().toLowerCase()}`;
 const ROSTER = 'roster';
 
 /**
- * Resolves the runtime limits. Everything defaults to questions.js; the only reason to
- * override is to shorten the clock while rehearsing the flow, which is why the override
- * comes from the environment rather than from anything a candidate can send.
+ * Resolves the runtime settings. Everything defaults to wt-questions.mjs; the environment can
+ * shorten the clock for a rehearsal, and tests and the dev server can swap in a whole draft spec.
+ * Nothing a candidate sends reaches any of it.
  */
 export function config(overrides = {}) {
   const d = Number(overrides.durationSec);
@@ -366,7 +368,24 @@ export function newToken() {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-const clamp = (s, n) => String(s == null ? '' : s).slice(0, n);
+/**
+ * The character limit for a question, in one place. The page showed one default and the server
+ * enforced another for a formatted answer with no explicit limit: 300 on screen, 2000 accepted.
+ */
+const maxLengthOf = (q) => q.maxLength
+  || (q.type === 'short' ? 300 : q.type === 'upload' ? 120 : 2000);
+
+/** The single whole-test duration, or null when there is no single clock to describe. */
+const durationFor = (cfg) => (cfg.timing.mode === 'total' ? cfg.timing.totalSec : null);
+
+/** The shape of a test before anyone has started it: how many questions, with what certainty. */
+function shapeOf(cfg) {
+  const ahead = remainingRange(firstQuestionId(cfg.questions), cfg.questions, []);
+  return {
+    total: ahead.certain ? ahead.max : null,
+    totalRange: { min: ahead.min, max: ahead.max, certain: ahead.certain },
+  };
+}
 
 /**
  * What the candidate is allowed to see about a question. Never the whole QUESTIONS array, and
@@ -393,9 +412,8 @@ function publicQuestion(id, answers, cfg) {
     // Labels only. optionLabels is what stops a branching option from telling the candidate
     // where it leads.
     options: optionLabels(q),
-    maxLength: q.maxLength || (q.type === 'long' ? 2000 : 300),
+    maxLength: maxLengthOf(q),
     placeholder: q.placeholder || null,
-    required: q.required !== false,
     brief: q.brief ? cfg.briefs[q.brief] || null : null,
     section: sectionIdOf(q, cfg),
     blockPaste: pasteBlockedFor(q, cfg),
@@ -609,7 +627,7 @@ function view(rec, now, cfg, extra = {}) {
     serverNow: now,
     candidate: { name: rec.name || null },
     // Null when there is no single whole-test clock, so the page knows not to draw one.
-    durationSec: cfg.timing.mode === 'total' ? cfg.timing.totalSec : null,
+    durationSec: durationFor(cfg),
     timing: { mode: cfg.timing.mode },
     navigation: { back: cfg.navigation.back, edit: cfg.navigation.edit },
     viewingIndex: looking,
@@ -622,7 +640,6 @@ function view(rec, now, cfg, extra = {}) {
     totalRange: { min: answered + ahead.min, max: answered + ahead.max, certain: ahead.certain },
     answered,
     ranOut: !!rec.ranOut,
-    blockPaste: cfg.integrity.blockPaste,
     allowSelfReset: cfg.allowSelfReset,
     ...extra,
   };
@@ -683,16 +700,17 @@ async function load(store, token) {
 export async function handle(store, body, now = Date.now(), cfg = config()) {
   // These two run before a token exists, so they sit ahead of the token lookup.
   if (body.action === 'hello') {
-    const ahead = remainingRange(firstQuestionId(cfg.questions), cfg.questions, []);
+    // The identify screen describes the test from this, so it has to be as mode-aware as `view`:
+    // it used to report the full duration on an untimed test.
     return {
       ok: true,
       phase: 'anonymous',
       serverNow: now,
       openRegistration: cfg.openRegistration,
       allowSelfReset: cfg.allowSelfReset,
-      durationSec: cfg.durationSec,
-      total: ahead.certain ? ahead.max : null,
-      totalRange: { min: ahead.min, max: ahead.max, certain: ahead.certain },
+      durationSec: durationFor(cfg),
+      timing: { mode: cfg.timing.mode },
+      ...shapeOf(cfg),
     };
   }
   if (body.action === 'register') return register(store, body, now, cfg);
@@ -710,14 +728,21 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       return view(rec, now, cfg);
 
     case 'back':
-    case 'forward': {
+    case 'forward':
+    case 'resume': {
       // Browsing is only ever browsing. It moves a cursor and touches nothing else, so even with
       // this on, an answer is still only changed by `answer`, and only when editing is allowed.
+      // `resume` jumps straight back to the newest question, which is what a button labelled
+      // "back to where I was" has to mean when someone has stepped back more than once.
       if (!cfg.navigation.back) return view(rec, now, cfg, { rejected: 'no_back' });
       const answered = rec.answers.length;
-      const at = Number.isInteger(rec.cursor) && rec.cursor < answered ? rec.cursor : answered;
-      const moved = body.action === 'back' ? at - 1 : at + 1;
-      rec.cursor = moved < 0 ? 0 : moved >= answered ? null : moved;
+      if (body.action === 'resume') {
+        rec.cursor = null;
+      } else {
+        const at = Number.isInteger(rec.cursor) && rec.cursor < answered ? rec.cursor : answered;
+        const moved = body.action === 'back' ? at - 1 : at + 1;
+        rec.cursor = moved < 0 ? 0 : moved >= answered ? null : moved;
+      }
       await store.put(KEY(token), rec);
       return view(rec, now, cfg);
     }
@@ -765,7 +790,7 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       const q = questionById(targetId, cfg.questions);
       if (!q) return view(rec, now, cfg, { rejected: 'out_of_order' });
       const rich = q.type === 'rich';
-      const max = q.maxLength || (rich || q.type === 'long' ? 2000 : 300);
+      const max = maxLengthOf(q);
 
       let value;
       let choiceIndex;
@@ -775,7 +800,7 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       } else if (q.type === 'upload') {
         // The file is already stored. What is being submitted here is the name the candidate
         // gave it, which is the thing that makes a list of attachments readable to a reviewer.
-        value = clamp(body.value, q.maxLength || 120).trim();
+        value = clamp(body.value, max).trim();
       } else if (q.type === 'choice') {
         // Never trust a client-sent label; accept only an index into our own options. The index
         // is then kept alongside the label, because with branching it is the index that decides
@@ -885,15 +910,21 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       // takes time, the grace window after the deadline is a few seconds, and a candidate on a
       // slow connection should not lose a file because they attached it near the buzzer.
       const phase = phaseOf(rec, now, cfg);
-      if (phase !== 'running') return view(rec, now, cfg, { rejected: phase });
+      if (phase === 'expired') return view(rec, now, cfg, { rejected: phase });
 
-      const currentId = currentQuestionId(rec.answers, cfg.questions);
-      if (!currentId) return view(rec, now, cfg, { rejected: 'done' });
-      if (body.questionId && String(body.questionId) !== currentId) {
+      // The file belongs to the question on screen. That is the newest one, unless the test allows
+      // revising and the candidate has stepped back: then it is the one they are looking at. Without
+      // this, a revisable test let them change an earlier answer's words but never its file.
+      const revising = cfg.navigation.edit && Number.isInteger(rec.cursor)
+        && rec.cursor >= 0 && rec.cursor < rec.answers.length && !rec.ranOut;
+      const targetId = revising ? rec.answers[rec.cursor].id : currentQuestionId(rec.answers, cfg.questions);
+      if (!revising && phase !== 'running') return view(rec, now, cfg, { rejected: phase });
+      if (!targetId) return view(rec, now, cfg, { rejected: 'done' });
+      if (body.questionId && String(body.questionId) !== targetId) {
         return view(rec, now, cfg, { rejected: 'out_of_order' });
       }
 
-      const q = questionById(currentId, cfg.questions);
+      const q = questionById(targetId, cfg.questions);
       if (!q || attachmentOf(q) === 'none') return view(rec, now, cfg, { rejected: 'not_an_upload' });
 
       // KV has no concept of an attachment. Refusing clearly beats a stack trace, though the
@@ -969,16 +1000,27 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         serverNow: now,
         openRegistration: cfg.openRegistration,
         allowSelfReset: true,
-        durationSec: cfg.durationSec,
-        total: remainingRange(firstQuestionId(cfg.questions), cfg.questions, []).certain
-          ? remainingRange(firstQuestionId(cfg.questions), cfg.questions, []).max
-          : null,
+        durationSec: durationFor(cfg),
+        timing: { mode: cfg.timing.mode },
+        ...shapeOf(cfg),
         wasReset: true,
       };
     }
 
     case 'finish': {
-      // Called when the clock runs out. Freezes the record so nothing lands afterwards.
+      // The client calls this when its countdown reaches zero. What that means is decided here,
+      // because the client's clock is cosmetic and the client is not trusted:
+      //
+      //   - Untimed: nothing. There is no clock to have run out.
+      //   - Per part: the part's clock ran out, not the sitting's. settleSections has already
+      //     moved the candidate on at the top of this request, so there is nothing to freeze.
+      //     Before this, a part's countdown hitting zero ENDED THE WHOLE TEST, the exact opposite
+      //     of what per-part limits promise.
+      //   - One clock: freeze the record, but only if the deadline has genuinely passed. A page
+      //     with a wrong idea of the time must not be able to end a sitting early.
+      if (cfg.timing.mode !== 'total') return view(rec, now, cfg);
+      const deadline = deadlineOf(rec, cfg, null);
+      if (deadline == null || now < deadline) return view(rec, now, cfg, { rejected: 'not_yet' });
       if (!rec.finishedAt && rec.startedAt) {
         rec.finishedAt = now;
         rec.ranOut = true;

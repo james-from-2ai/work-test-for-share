@@ -45,41 +45,6 @@
   border-bottom: 1px solid #e0a45c;
 }
 .demo-banner strong { font-weight: 700; }
-
-/* The internal testing toggle. Visually separated from the banner copy and labelled, so nobody
-   mistakes it for something the exercise itself offers. */
-.testing-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem 0.75rem;
-  margin-top: 0.55rem;
-  padding-top: 0.55rem;
-  border-top: 1px dashed rgba(122, 74, 0, 0.35);
-}
-.testing-tag {
-  font-size: 0.66rem;
-  font-weight: 800;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  border: 1px solid currentColor;
-}
-.testing-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.83rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.testing-toggle input { margin: 0; cursor: pointer; }
-.testing-toggle.on { text-decoration: underline; }
-@media (prefers-color-scheme: dark) {
-  .testing-bar { border-top-color: rgba(255, 224, 176, 0.35); }
-}
 @media (prefers-color-scheme: dark) {
   .demo-banner { color: #ffe0b0; background: #40300f; border-bottom-color: #7a5a1c; }
 }
@@ -143,9 +108,15 @@ p { margin: 0 0 0.9rem; }
   border-top: 1px solid var(--line);
   flex-wrap: wrap;
 }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
+.commit { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; margin-left: auto; }
+.actions:empty { display: none; }
+.card > .actions { margin-top: 1rem; }
 
 .progress { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
 
+.clock-wrap { display: inline-flex; align-items: baseline; gap: 0.5rem; }
+.clock-label:empty { display: none; }
 .clock {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
@@ -302,6 +273,9 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, label:focus-w
   border: 1px solid var(--line); border-radius: 5px; cursor: pointer;
 }
 .rt-btn:hover { border-color: var(--accent); color: var(--accent); }
+.rt-b { font-weight: 800; }
+.rt-i { font-style: italic; }
+.rt-u { text-decoration: underline; }
 .rt-btn:active { background: var(--bg); }
 
 .rt-edit {
@@ -337,6 +311,20 @@ button.primary {
 button.primary:hover { filter: brightness(1.08); }
 button.primary[disabled] { opacity: 0.55; cursor: default; filter: none; }
 
+button.secondary {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.55rem 0.95rem;
+  cursor: pointer;
+}
+button.secondary:hover { background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+button.secondary[disabled] { opacity: 0.55; cursor: default; }
+
 .err { color: var(--danger); font-size: 0.9rem; margin: 0.6rem 0 0; }
 
 /* The submitted file, shown wherever an answer is read back. Deliberately not styled as an
@@ -352,7 +340,6 @@ button.primary[disabled] { opacity: 0.55; cursor: default; filter: none; }
   border-radius: 6px; border: 1px solid var(--warn); color: var(--warn);
   background: rgba(154, 91, 18, 0.07);
 }
-.nav-btn { margin-right: 0.4rem; }
 
 /* --- Upload questions. The file is sent when it is chosen, so the status line is the only
    feedback a candidate gets that it worked; it is deliberately wordy about what happens next. */
@@ -377,7 +364,6 @@ button.primary[disabled] { opacity: 0.55; cursor: default; filter: none; }
   border: 0;
   border-bottom: 1px solid currentColor;
   padding: 0;
-  margin-right: auto;
   cursor: pointer;
 }
 .review-open:hover { filter: brightness(1.15); }

@@ -400,6 +400,119 @@ test('the instructions are not sent once the test is under way', async () => {
   assert.equal(res.intro, undefined);
 });
 
+/* ------------------------------------------------- the client's clock is cosmetic ---- */
+
+/**
+ * The page calls `finish` when its countdown reaches zero. What that means is the server's call,
+ * because the page's clock is cosmetic and the page is not trusted. These pin down all three
+ * modes, and the one that mattered most: on per-part timing, a part's countdown reaching zero
+ * used to END THE WHOLE TEST, the exact opposite of what the setting promises.
+ */
+test('on per-part timing, finishing a part does not end the sitting', async () => {
+  const store = memStore();
+  const cfg = make({ timing: { mode: 'section' } });
+  const token = await started(store, cfg);
+
+  // Part 1 is 30 minutes. Come back at 31 with the page saying "time's up".
+  const res = await handle(store, { action: 'finish', token }, T0 + 31 * 60 * 1000, cfg);
+  assert.equal(res.phase, 'running', 'the sitting was ended by a single part running out');
+  assert.equal(res.question.id, 'c', 'not moved on into Part 2');
+  assert.equal(res.ranOut, false);
+});
+
+test('on one clock, the page cannot end a sitting before the deadline', async () => {
+  const store = memStore();
+  const cfg = make({ durationSec: 3600 });
+  const token = await started(store, cfg);
+
+  const early = await handle(store, { action: 'finish', token }, T0 + 5 * 60 * 1000, cfg);
+  assert.equal(early.rejected, 'not_yet');
+  assert.equal(early.phase, 'running');
+
+  const late = await handle(store, { action: 'finish', token }, T0 + 61 * 60 * 1000, cfg);
+  assert.equal(late.phase, 'done');
+  assert.equal(late.ranOut, true);
+});
+
+test('on an untimed test, finish does nothing at all', async () => {
+  const store = memStore();
+  const cfg = make({ timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const res = await handle(store, { action: 'finish', token }, T0 + 400 * 24 * 3600 * 1000, cfg);
+  assert.equal(res.phase, 'running');
+  assert.equal(res.ranOut, false);
+});
+
+/* ----------------------------------------------------- what the first screen hears --- */
+
+test('hello describes the clock the way the test is actually set', async () => {
+  const untimed = await handle(memStore(), { action: 'hello' }, T0, make({ timing: { mode: 'none' } }));
+  assert.equal(untimed.durationSec, null, 'an untimed test reported a duration');
+  assert.equal(untimed.timing.mode, 'none');
+
+  const timed = await handle(memStore(), { action: 'hello' }, T0, make({ durationSec: 1800 }));
+  assert.equal(timed.durationSec, 1800);
+  assert.equal(timed.timing.mode, 'total');
+});
+
+/* ------------------------------------------------------------- resume ------------- */
+
+test('resume jumps back to the newest question however far back they stepped', async () => {
+  const store = memStore();
+  const cfg = make({ navigation: { back: true } });
+  const token = await started(store, cfg);
+  await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 1000, cfg);
+  await handle(store, { action: 'answer', token, index: 1, value: 'b' }, T0 + 2000, cfg);
+  await handle(store, { action: 'back', token }, T0 + 3000, cfg);
+  const twoBack = await handle(store, { action: 'back', token }, T0 + 4000, cfg);
+  assert.equal(twoBack.viewingIndex, 0);
+
+  // "Back to where I was" has to mean the frontier, not one step forward.
+  const res = await handle(store, { action: 'resume', token }, T0 + 5000, cfg);
+  assert.equal(res.viewingIndex, null);
+  assert.equal(res.question.id, 'c');
+});
+
+test('resume is refused on a test with no going back', async () => {
+  const store = memStore();
+  const cfg = make();
+  const token = await started(store, cfg);
+  const res = await handle(store, { action: 'resume', token }, T0 + 1000, cfg);
+  assert.equal(res.rejected, 'no_back');
+});
+
+/* ------------------------------------------------- files on a revisable test ------- */
+
+test('on a revisable test, the file of an earlier answer can be replaced too', async () => {
+  // Before this, a candidate could change an earlier answer's words but never its file: uploads
+  // were accepted only for the newest question.
+  const spec = [
+    { id: 'work', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], prompt: 'Working' },
+    { id: 'notes', section: 'p1', type: 'short', required: false, prompt: 'Notes', next: null },
+  ];
+  const cfg = config({ sections: SECTIONS, questions: spec, navigation: { back: true, edit: true } });
+  const store = memStore();
+  const token = await started(store, cfg);
+
+  await handle(store, { action: 'answer', token, index: 0, value: rich('first version') }, T0 + 1000, cfg);
+  await handle(store, { action: 'answer', token, index: 1, value: 'n' }, T0 + 2000, cfg);
+  await handle(store, { action: 'back', token }, T0 + 3000, cfg);
+  const looking = await handle(store, { action: 'back', token }, T0 + 4000, cfg);
+  assert.equal(looking.question.id, 'work');
+
+  const up = await handle(store, {
+    action: 'upload', token, questionId: 'work',
+    filename: 'better.pdf', contentType: 'application/pdf', data: PDF,
+  }, T0 + 5000, cfg);
+  assert.equal(up.ok, true, `upload while revising was refused: ${up.rejected || up.error}`);
+  assert.equal(store.files.length, 1);
+
+  const saved = await handle(store, { action: 'answer', token, index: 0, value: rich('first version') }, T0 + 6000, cfg);
+  assert.equal(saved.revised, true);
+  const review = await handle(store, { action: 'review', token }, T0 + 7000, cfg);
+  assert.equal(review.review[0].upload.filename, 'better.pdf', 'the saved revision did not carry the new file');
+});
+
 /* ------------------------------------------------------- the closing screen -------- */
 
 test('the closing screen counts what was given, not what was reached', async () => {
@@ -532,6 +645,8 @@ test('blocking paste for the whole test reaches every question', async () => {
   const store = memStore();
   const token = await started(store, cfg);
   const res = await handle(store, { action: 'state', token }, T0 + 500, cfg);
-  assert.equal(res.blockPaste, true);
+  // Paste blocking travels on the question, and only there. A top-level copy used to exist and
+  // the page read that one instead, so a per-question override was silently ignored.
   assert.equal(res.question.blockPaste, true);
+  assert.equal('blockPaste' in res, false, 'a test-wide flag is sent that the page could mistake for the question’s');
 });

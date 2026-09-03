@@ -182,5 +182,12 @@ and a closing question about AI use, and `tools/example-branching-spec.json` is 
 to `tools/.dev-uploads/`, which is gitignored. Tests:
 
 ```bash
-node --test tools/engine.test.mjs tools/airtable.test.mjs tools/flow.test.mjs tools/files.test.mjs
+node --test tools/*.test.mjs
 ```
+
+The suites are worth knowing by name. `engine` covers the guarantees that hold whatever the
+settings are; `flow` covers branching; `options` covers everything that is a setting (timing,
+going back, what counts as an answer, and the instructions and closing screens that describe
+them); `files` covers uploads; `airtable` covers the store; and `tooling` compiles what
+`spec-apply` generates, because a generator whose output is source code needs its output
+compiled or the first sign of trouble is a deploy that will not build.

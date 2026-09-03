@@ -13,13 +13,14 @@
   <strong>Demo.</strong> This is a public preview of 2AI's timed work test, for showing people how it works.
   Anything you type here is visible to anyone with the link, so use a made-up name and do not enter anything private.
   It is not a live application and nobody is assessed on it.
-  <div class="testing-bar" data-testing-toggle></div>
 </div><main id="app" class="wrap">
   <p class="muted" id="boot">Loading&hellip;</p>
 </main>
 
-<!-- Screens are cloned from these templates. Nothing belonging to a later question is ever in
-     the live DOM; the current question is built entirely from the server's response. -->
+<!-- Screens are cloned from these templates and filled in by assets/app.js from the server's
+     response. Nothing belonging to a later question is ever in the live DOM, and nothing in these
+     templates states a rule of the test: rules about time, going back and files are written by the
+     engine that enforces them, so this page cannot promise something the test does not do. -->
 
 <template id="tpl-invalid">
   <section class="card">
@@ -33,7 +34,7 @@
   <section class="card">
     <h1>We cannot reach the server</h1>
     <p data-hook="detail">Either this device has lost its connection, or our end is briefly unavailable.</p>
-    <p>Nothing you have already submitted is affected. If your task has started, the clock is held on our server rather than in this page, so reconnecting does not cost you anything beyond the time itself.</p>
+    <p>Nothing you have already submitted is affected. If your task is timed, the clock is held on our server rather than in this page, so reconnecting does not cost you anything beyond the time itself.</p>
     <p class="muted">Try again in a moment. Do not open a new link or start over: it will not give you more time, and this session is the one we will read.</p>
     <footer class="bar bottom">
       <span class="muted small">Nothing is submitted from this screen.</span>
@@ -55,7 +56,7 @@
     </div>
     <p class="err" data-hook="err" hidden></p>
     <footer class="bar bottom">
-      <span class="muted small">Nothing has started yet. The clock starts later, and only when you say so.</span>
+      <span class="muted small" data-hook="startnote">Nothing has started yet.</span>
       <button class="primary" data-hook="go">Continue</button>
     </footer>
   </section>
@@ -65,10 +66,6 @@
   <section class="card">
     <p class="eyebrow">Candidate instructions</p>
     <h1 data-hook="greeting">Before you start</h1>
-    <!-- Everything below is filled in by the server. The rules describe what the engine actually
-         enforces, so the engine writes them: this page used to hardcode "you cannot go back" and
-         "the clock does not stop" and a fixed number of parts, and went on saying all three long
-         after the settings said otherwise. Anything task-specific comes from the spec's intro. -->
     <p data-hook="summary"></p>
     <p data-hook="blurb" hidden></p>
 
@@ -76,14 +73,13 @@
     <p class="track-note muted small" data-hook="tracknote"></p>
 
     <ul class="rules" data-hook="rules"></ul>
-
     <div data-hook="prose"></div>
-
     <p class="muted small" data-hook="closing" hidden></p>
+    <p class="err" data-hook="err" hidden></p>
 
     <footer class="bar bottom">
       <span class="muted small" data-hook="who"></span>
-      <button class="primary" data-hook="begin">I understand, start the clock</button>
+      <button class="primary" data-hook="begin">I understand, begin</button>
     </footer>
   </section>
 </template>
@@ -92,7 +88,10 @@
   <section class="card">
     <header class="bar">
       <span class="progress"><span data-hook="section"></span><span data-hook="progress"></span></span>
-      <span class="clock" data-hook="clock" role="timer" aria-live="off">&mdash;</span>
+      <span class="clock-wrap">
+        <span class="clock-label muted small" data-hook="clocklabel"></span>
+        <span class="clock" data-hook="clock" role="timer" aria-live="off">&mdash;</span>
+      </span>
     </header>
     <div class="track" data-hook="track" aria-hidden="true"></div>
     <p class="track-note muted small" data-hook="tracknote"></p>
@@ -104,8 +103,11 @@
     <div data-hook="field"></div>
     <p class="err" data-hook="err" hidden></p>
     <footer class="bar bottom">
-      <span class="muted small">Answers are final once you continue.</span>
-      <button class="primary" data-hook="next"></button>
+      <div class="actions" data-hook="actions"></div>
+      <div class="commit">
+        <span class="muted small" data-hook="finality"></span>
+        <button class="primary" data-hook="next"></button>
+      </div>
     </footer>
   </section>
 </template>
@@ -114,11 +116,10 @@
   <section class="card">
     <h1 data-hook="title">Submitted</h1>
     <p data-hook="body"></p>
-    <!-- Both filled in by the server. This used to be a fixed paragraph promising that the link
-         would not reopen the task, which is untrue on a test that allows revising, and that
-         "all" answers were recorded, which overstates it when a part's clock cut some off. -->
     <p class="muted" data-hook="note"></p>
     <p class="muted small" data-hook="closing" hidden></p>
+    <p class="err" data-hook="err" hidden></p>
+    <div class="actions" data-hook="actions"></div>
     <div class="testing-only" data-hook="resetbox" hidden>
       <p><strong>Internal testing</strong>. This box is only here because <code>ALLOW_SELF_RESET</code> is switched on. Candidates must never see it, so turn that variable off before sending this to anyone outside the team.</p>
       <button class="ghost-btn" data-hook="reset">Wipe this session and start over</button>
@@ -127,6 +128,5 @@
 </template>
 
 <script src="assets/app.js"></script>
-<script src="assets/testing-toggle.js"></script>
 </body>
 </html>
