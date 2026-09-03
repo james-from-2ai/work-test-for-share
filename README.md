@@ -111,8 +111,17 @@ minutes, and the scenario briefs. Four panels sit alongside the editor:
   it is otherwise invisible until a candidate walks into it, on a clock.
 - **Walk it through**, clicking the draft the way a candidate would, using the same routing code
   the server runs.
+- **Live preview**, the real candidate page running this draft, in a frame. One click hands the
+  draft to the local dev server and reloads the page against it, clock, branching and file checks
+  included. It needs the dev server: the deployed site has no `/api/dev-spec`, deliberately, so
+  nothing in production can swap the running test out from under a sitting.
 - **Problems**, updated as you type.
 - **Spec file**, which is what you download.
+
+Two things the candidate page does on its own that are worth knowing about. It keeps a draft of
+whatever is being typed in the browser, and restores it if the page is closed or crashes before the
+answer is submitted; nothing about a draft ever reaches the server. And the last question asks
+once before it goes, since on a forward-only test that is the one click with no way back from it.
 
 The builder **cannot publish**, on purpose. It has no password, and what it would be publishing is
 a live hiring assessment. Shipping is a reviewed diff instead:

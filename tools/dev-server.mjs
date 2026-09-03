@@ -14,14 +14,19 @@
  * `--spec=path.json` runs a draft test instead of the compiled one, which is how a test written
  * in the builder gets tried for real: same engine, same clock, same forward-only rules, just a
  * different set of questions. The file holds { durationSec?, sections, briefs, questions }.
- * Nothing in production can do this; the deployed test is always the compiled one.
+ *
+ * `/api/dev-spec` does the same thing at runtime. The builder POSTs its draft here and then loads
+ * the real candidate page in a frame, so "try it" is one click rather than a download and a
+ * restart. GET reports what is running. This endpoint exists ONLY in this file: there is no such
+ * Function in functions/api/, so nothing in production can swap the test out from under a sitting.
+ * The deployed test is always the compiled one.
  *
  * This serves the repo root so the /api/* paths match production.
  */
 
 import { createServer } from 'node:http';
 import { readFileSync, mkdirSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, rm } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -60,15 +65,23 @@ function loadSpec(path) {
 
 const SPEC = arg('spec') ? loadSpec(arg('spec')) : {};
 
-// `--duration=120` shortens the clock so you can watch the time-up screen without waiting the
-// full 90 minutes. Mirrors the DURATION_SEC variable in production.
-const CFG = config({
-  ...SPEC,
-  durationSec: arg('duration') || process.env.DURATION_SEC || SPEC.durationSec,
-  openRegistration: arg('registration') || process.env.OPEN_REGISTRATION,
-  // Local testing wants this on almost always, hence the default the deployed site never gets.
-  allowSelfReset: arg('selfreset') || process.env.ALLOW_SELF_RESET || 'on',
-});
+/**
+ * The running configuration, rebuilt whenever a spec arrives over /api/dev-spec. `--duration=120`
+ * shortens the clock so you can watch the time-up screen without waiting the full 90 minutes,
+ * and it wins over whatever the spec says, as DURATION_SEC does in production.
+ */
+function buildConfig(spec) {
+  return config({
+    ...spec,
+    durationSec: arg('duration') || process.env.DURATION_SEC || spec.durationSec,
+    openRegistration: arg('registration') || process.env.OPEN_REGISTRATION,
+    // Local testing wants this on almost always, hence the default the deployed site never gets.
+    allowSelfReset: arg('selfreset') || process.env.ALLOW_SELF_RESET || 'on',
+  });
+}
+
+let CFG = buildConfig(SPEC);
+let liveSource = arg('spec') ? 'file' : 'compiled';
 
 const UPLOADS = join(ROOT, 'tools', '.dev-uploads');
 
@@ -144,6 +157,37 @@ createServer(async (req, res) => {
     const status = result.status || (result.ok ? 200 : 400);
     delete result.status;
     return json(res, result, status);
+  }
+
+  // Dev only. See the header: the builder swaps the running test here, and there is deliberately
+  // no equivalent in functions/api/.
+  if (url.pathname === '/api/dev-spec') {
+    if (req.method === 'GET') {
+      return json(res, { ok: true, live: true, source: liveSource, questions: CFG.questions.length });
+    }
+    if (req.method !== 'POST') return json(res, { ok: false, error: 'method' }, 405);
+    const body = await readBody(req);
+    const spec = body && body.spec && typeof body.spec === 'object' ? body.spec : null;
+    if (!spec || !Array.isArray(spec.questions) || !spec.questions.length) {
+      return json(res, { ok: false, error: 'no_spec', problems: [{ level: 'error', message: 'No questions in the spec.' }] }, 400);
+    }
+    if (!Array.isArray(spec.sections) || !spec.sections.length) {
+      return json(res, { ok: false, error: 'bad_spec', problems: [{ level: 'error', message: 'The spec has no parts.' }] }, 400);
+    }
+    // Same refusal the command line makes: a flow with errors is not served, because a dangling
+    // branch is invisible until someone walks into it.
+    const problems = validateFlow(spec.questions);
+    if (problems.some((p) => p.level === 'error')) return json(res, { ok: false, error: 'invalid_spec', problems }, 400);
+
+    if (body.reset) {
+      // A fresh preview means a fresh store, or the frame resumes whatever session was in it.
+      await rm(STORE, { force: true });
+      await rm(UPLOADS, { recursive: true, force: true });
+    }
+    CFG = buildConfig(spec);
+    liveSource = 'builder';
+    console.log(`  live spec from the builder: ${spec.questions.length} questions${body.reset ? ', store reset' : ''}`);
+    return json(res, { ok: true, source: liveSource, questions: CFG.questions.length, problems });
   }
 
   if (url.pathname === '/api/work-test-admin') {

@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { writeFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -151,4 +151,85 @@ test('the shipped example specs are all valid', () => {
     const spec = JSON.parse(readFileSync(join(ROOT, 'tools', name), 'utf8'));
     checkParses(generate(spec), name);
   }
+});
+
+/* ------------------------------------------------------------ live preview -------- */
+
+/**
+ * The builder's live preview POSTs a draft to the dev server, which then serves it. This is the
+ * loop an author actually uses to try a test, so it gets a real server rather than a mock: spawn
+ * one on a spare port, hand it a spec, and check the candidate endpoint now describes that spec.
+ */
+async function withDevServer(fn) {
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const child = spawn(node, ['tools/dev-server.mjs', `--port=${port}`], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '';
+  const ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`dev server did not start:\n${out}`)), 15000);
+    child.stdout.on('data', (d) => {
+      out += d;
+      if (out.includes('work test dev server on')) { clearTimeout(timer); resolve(); }
+    });
+    child.stderr.on('data', (d) => { out += d; });
+    child.on('exit', (code) => { clearTimeout(timer); reject(new Error(`dev server exited with ${code}:\n${out}`)); });
+  });
+  try {
+    await ready;
+    await fn(`http://localhost:${port}`);
+  } finally {
+    child.kill();
+  }
+}
+
+const post = (url, body) => fetch(url, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+}).then((r) => r.json());
+
+test('the dev server serves a draft handed to it over /api/dev-spec', async () => {
+  await withDevServer(async (base) => {
+    const before = await fetch(`${base}/api/dev-spec`).then((r) => r.json());
+    assert.equal(before.live, true);
+    assert.equal(before.source, 'compiled', 'a fresh server should be running the compiled test');
+
+    const draft = {
+      durationSec: 600,
+      sections: [{ id: 'p1', label: 'Part 1', summary: 'Only', recommendedMin: 10 }],
+      briefs: {},
+      questions: [
+        { id: 'one', section: 'p1', type: 'short', prompt: 'One' },
+        { id: 'two', section: 'p1', type: 'short', prompt: 'Two', next: null },
+      ],
+    };
+    const loaded = await post(`${base}/api/dev-spec`, { spec: draft, reset: true });
+    assert.equal(loaded.ok, true, JSON.stringify(loaded));
+    assert.equal(loaded.questions, 2);
+
+    // The candidate endpoint now describes the draft, not the compiled test.
+    const hello = await post(`${base}/api/work-test`, { action: 'hello' });
+    assert.equal(hello.total, 2);
+    assert.equal(hello.durationSec, 600);
+
+    const after = await fetch(`${base}/api/dev-spec`).then((r) => r.json());
+    assert.equal(after.source, 'builder');
+  });
+});
+
+test('the dev server refuses a draft with a dangling branch', async () => {
+  await withDevServer(async (base) => {
+    const broken = {
+      durationSec: 600,
+      sections: [{ id: 'p1', label: 'Part 1', summary: 'Only', recommendedMin: 10 }],
+      briefs: {},
+      questions: [{ id: 'one', section: 'p1', type: 'short', prompt: 'One', next: 'nowhere' }],
+    };
+    const res = await post(`${base}/api/dev-spec`, { spec: broken });
+    assert.equal(res.ok, false);
+    assert.ok(res.problems.some((p) => /nowhere/.test(p.message)), 'the refusal did not name the missing destination');
+
+    // And it is still serving what it was before, untouched.
+    const hello = await post(`${base}/api/work-test`, { action: 'hello' });
+    assert.notEqual(hello.total, 1);
+  });
 });

@@ -187,6 +187,7 @@ code { font-family: var(--mono); font-size: 0.82em; }
 .pv .fake { border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 0.55rem; color: var(--muted); font-size: 0.8rem; margin-bottom: 0.6rem; }
 .crumbs { font-size: 0.74rem; color: var(--faint); margin-bottom: 0.5rem; }
 
+.live-frame { display: block; width: 100%; height: 70vh; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
 textarea.json { width: 100%; min-height: 22rem; font-family: var(--mono); font-size: 0.72rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0.5rem; background: var(--surface); color: inherit; }
 
 .hint { font-size: 0.8rem; color: var(--muted); }
@@ -913,7 +914,7 @@ function drawInspector() {
   const errors = problems.filter((p) => p.level === 'error').length;
 
   const tabs = el('div', { class: 'tabs' });
-  for (const [key, label] of [['map', 'Branch map'], ['walk', 'Walk it through'], ['problems', `Problems${problems.length ? ` ${problems.length}` : ''}`]]) {
+  for (const [key, label] of [['map', 'Branch map'], ['walk', 'Walk it through'], ['live', 'Live preview'], ['problems', `Problems${problems.length ? ` ${problems.length}` : ''}`]]) {
     tabs.append(el('button', { class: `tab ${tab === key ? 'on' : ''}`, onclick: () => { tab = key; drawInspector(); }, text: label }));
   }
   root.append(tabs);
@@ -926,6 +927,7 @@ function drawInspector() {
 
   if (tab === 'map') drawMap(root);
   else if (tab === 'walk') drawWalk(root);
+  else if (tab === 'live') drawLive(root, problems);
   else drawProblems(root, problems);
 }
 
@@ -1146,6 +1148,86 @@ function drawWalk(root) {
   root.append(card);
   root.append(el('div', { class: 'btns', style: 'margin-top:0.6rem' },
     el('button', { class: 'btn', text: 'Start again', onclick: () => { walk = []; drawInspector(); } })));
+}
+
+/* --------------------------------------------------------------- live preview ------- */
+
+/**
+ * The real candidate page, running this draft, in a frame.
+ *
+ * "Walk it through" is a simulation of the candidate screen drawn by this page, which means the
+ * two can drift: a rule the engine enforces that this page forgot to mention, a field the real
+ * page draws differently. This tab removes the gap by loading the actual page. It needs the local
+ * dev server, which accepts a draft at /api/dev-spec; the deployed site has no such endpoint, on
+ * purpose, so this tab explains itself there rather than doing anything.
+ */
+let liveFrameKey = 0;
+
+function drawLive(root, problems) {
+  const errors = problems.filter((p) => p.level === 'error').length;
+  const box = el('div');
+  root.append(box);
+
+  const status = el('p', { class: 'hint', text: 'Checking for the local dev server…' });
+  box.append(status);
+
+  fetch('/api/dev-spec', { method: 'GET' })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)
+    .then((info) => {
+      if (!info || !info.live) {
+        status.replaceWith(el('div', { class: 'callout' },
+          el('strong', { text: 'Live preview needs the local dev server. ' }),
+          el('span', { text: 'Run ' }),
+          el('code', { text: 'node tools/dev-server.mjs' }),
+          el('span', { text: ' and open the builder from http://localhost:8788/builder.html. On the deployed site this tab does nothing, deliberately: nothing there can swap the running test.' })));
+        return;
+      }
+
+      status.textContent = info.source === 'builder'
+        ? `The preview is running a draft from this builder (${info.questions} questions).`
+        : `The server is running the ${info.source === 'file' ? 'spec it was started with' : 'compiled test'} (${info.questions} questions), not this draft yet.`;
+
+      const load = el('button', {
+        class: 'btn primary',
+        text: 'Load this draft into the preview',
+        disabled: errors > 0,
+        onclick: async () => {
+          load.disabled = true;
+          load.textContent = 'Loading…';
+          let res;
+          try {
+            res = await fetch('/api/dev-spec', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ spec: JSON.parse(specJson()), reset: true }),
+            }).then((r) => r.json());
+          } catch {
+            res = { ok: false, problems: [{ level: 'error', message: 'Could not reach the dev server.' }] };
+          }
+          load.disabled = false;
+          load.textContent = 'Load this draft into the preview';
+          if (!res.ok) {
+            status.textContent = `The server refused the draft: ${(res.problems || []).map((p) => p.message).join(' ')}`;
+            return;
+          }
+          // The frame shares this origin's storage with the builder, so a previous preview session
+          // would otherwise be resumed. A fresh preview means a fresh candidate.
+          try { localStorage.removeItem('work-test-token'); } catch { /* fine */ }
+          status.textContent = `The preview is running this draft (${res.questions} questions). Use any made-up name and email.`;
+          frame.src = `/?preview=${++liveFrameKey}`;
+        },
+      });
+
+      const row = el('div', { class: 'btns', style: 'margin:0.6rem 0' }, load,
+        el('button', { class: 'btn', text: 'Open in a new tab', onclick: () => window.open('/', '_blank', 'noopener') }));
+      if (errors) row.append(el('span', { class: 'hint', text: 'Fix the problems first; the server refuses a flow with errors.' }));
+      box.append(row);
+
+      const frame = el('iframe', { class: 'live-frame', title: 'The candidate page, running this draft', src: 'about:blank' });
+      box.append(frame);
+      box.append(el('p', { class: 'hint', style: 'margin-top:0.5rem', text: 'This replaces whatever the dev server was running until it is restarted, and clears its practice sessions. It is the real page: the clock, the branching and the file checks are all live.' }));
+    });
 }
 
 /* ----------------------------------------------------------------- problems -------- */

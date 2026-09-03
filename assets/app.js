@@ -103,6 +103,57 @@ const REJECTIONS = {
   not_an_upload: 'This question does not take a file.',
 };
 
+/* ---------------------------------------------------------------------- drafts ------- */
+
+/**
+ * Whatever is typed into the current question is kept in this browser as it is typed, so a crash
+ * or an accidental close forty minutes into a written answer does not cost the answer. Nothing
+ * here touches the server: a draft is restored into the box when the same question comes back up
+ * and deleted the moment the answer is actually submitted. Keys carry the session token, so two
+ * candidates on one machine cannot see each other's half-written work.
+ */
+const draftKey = (qid) => `work-test-draft:${token}:${qid}`;
+
+// Saves are debounced, so one pending timer can outlive the answer it belongs to: submit at 0ms,
+// clear the draft, and the save queued at -300ms then writes it straight back. Holding the timer
+// here lets clearDraft cancel it, so a submitted answer never leaves a stale draft behind.
+let draftTimer = null;
+
+function queueDraft(qid, value) {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => saveDraft(qid, value), 400);
+}
+
+function saveDraft(qid, value) {
+  try {
+    if (isBlank(value)) localStorage.removeItem(draftKey(qid));
+    else localStorage.setItem(draftKey(qid), JSON.stringify(value));
+  } catch { /* private mode or storage full: the reload warning still stands */ }
+}
+
+function loadDraft(qid) {
+  try {
+    const raw = localStorage.getItem(draftKey(qid));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft(qid) {
+  clearTimeout(draftTimer);
+  try { localStorage.removeItem(draftKey(qid)); } catch { /* nothing to clear */ }
+}
+
+/** Once the test is over there is nothing a draft could be restored into. */
+function clearAllDrafts() {
+  clearTimeout(draftTimer);
+  try {
+    const prefix = `work-test-draft:${token}:`;
+    for (const key of Object.keys(localStorage)) if (key.startsWith(prefix)) localStorage.removeItem(key);
+  } catch { /* nothing to clear */ }
+}
+
 /* --------------------------------------------------------------------- helpers ------- */
 
 function screen(id) {
@@ -916,6 +967,10 @@ function renderQuestion(state) {
   let attachment = null;
   const refreshNext = () => { next.disabled = over || (attachment ? attachment.busy() : false); };
 
+  // Drafts are for the question being answered, never for one being looked back at: there the
+  // submitted answer is the thing to show, and a stale draft would silently replace it.
+  const draftFor = (value) => { if (!past) queueDraft(q.id, value); };
+
   let read; // returns what we send as `value`
 
   if (q.type === 'rich') {
@@ -934,9 +989,15 @@ function renderQuestion(state) {
       // Refuse to continue rather than silently truncating someone's answer. The server clamps
       // anyway, but losing a paragraph without being told would be worse than being blocked.
       refreshNext();
+      draftFor(blocks);
     };
     const ed = richEditor(q, field, paint);
     field.append(counter);
+    const draft = past ? null : loadDraft(q.id);
+    if (draft && !isBlank(draft)) {
+      renderStoredAnswer(ed.editor, draft, { blank: null });
+      noteRestored(field);
+    }
     paint();
     read = ed.read;
     if (!past) ed.editor.focus();
@@ -956,6 +1017,7 @@ function renderQuestion(state) {
       input.addEventListener('change', () => {
         list.querySelectorAll('.opt').forEach((el) => el.classList.remove('sel'));
         label.classList.add('sel');
+        if (!past) saveDraft(q.id, i);
       });
       list.append(label);
     });
@@ -964,6 +1026,13 @@ function renderQuestion(state) {
       const sel = list.querySelector('input:checked');
       return sel ? Number(sel.value) : null;
     };
+    const draft = past ? null : loadDraft(q.id);
+    const inputs = list.querySelectorAll('input');
+    if (Number.isInteger(draft) && inputs[draft]) {
+      inputs[draft].checked = true;
+      inputs[draft].closest('.opt').classList.add('sel');
+      noteRestored(field);
+    }
     if (!past) list.querySelector('input')?.focus();
   } else {
     if (q.type === 'upload') {
@@ -988,8 +1057,13 @@ function renderQuestion(state) {
         ? `${words} words · ${input.value.length} / ${q.maxLength} characters`
         : `${input.value.length} / ${q.maxLength}`;
     };
+    const draft = past ? null : loadDraft(q.id);
+    if (typeof draft === 'string' && draft.trim()) {
+      input.value = draft;
+      noteRestored(field);
+    }
     paint();
-    input.addEventListener('input', paint);
+    input.addEventListener('input', () => { paint(); draftFor(input.value); });
     field.append(counter);
     guardPaste(input);
     if (!past) input.focus();
@@ -1026,7 +1100,38 @@ function renderQuestion(state) {
     }
   };
 
+  /**
+   * The last answer gets one deliberate pause. "Submit final answer" used to commit on the first
+   * click, and on a forward-only test that is the one click with no way back from it. The button
+   * changes wording and asks again; "Not yet" puts everything back as it was.
+   */
+  let armed = false;
+  const disarm = () => {
+    armed = false;
+    const box = $('.confirm-final', app);
+    if (box) box.remove();
+  };
+  const arm = () => {
+    armed = true;
+    next.textContent = 'Yes, submit everything';
+    const box = document.createElement('div');
+    box.className = 'confirm-final';
+    const p = document.createElement('p');
+    p.textContent = canRevise
+      ? 'This is your last question. You can still come back and change answers afterwards, for as long as you have time.'
+      : 'This is your last question. Once you submit, the test is finished and nothing can be changed.';
+    const notYet = document.createElement('button');
+    notYet.type = 'button';
+    notYet.className = 'secondary';
+    notYet.textContent = 'Not yet';
+    notYet.addEventListener('click', () => { disarm(); next.textContent = nextLabel; next.focus(); });
+    box.append(p, notYet);
+    field.parentNode.insertBefore(box, hook('err'));
+    next.focus();
+  };
+
   const restore = () => {
+    disarm();
     next.textContent = nextLabel;
     refreshNext();
   };
@@ -1047,6 +1152,8 @@ function renderQuestion(state) {
     const value = read();
     const blocked = requirementCheck();
     if (blocked) return showError(blocked);
+
+    if (q.isLast && !past && !armed && !confirmDiscard) return arm();
 
     inFlight = true;
     next.disabled = true;
@@ -1080,6 +1187,8 @@ function renderQuestion(state) {
       if (res.rejected === 'out_of_order') setTimeout(() => render(res), 1500);
       return;
     }
+    // The answer is recorded, so the draft of it has done its job.
+    if (!past) clearDraft(q.id);
     render(res);
   };
 
@@ -1088,6 +1197,14 @@ function renderQuestion(state) {
   if (past) prefill(q, past, field, canEdit);
   refreshNext();
   startClock(read);
+}
+
+/** Said once, above the field, when what is in it came back from a draft rather than a keyboard. */
+function noteRestored(field) {
+  const p = document.createElement('p');
+  p.className = 'draft-note muted small';
+  p.textContent = 'Restored what you had typed here before this page was last closed. Check it, then carry on.';
+  field.parentNode.insertBefore(p, field);
 }
 
 /**
@@ -1279,6 +1396,7 @@ function renderDone(state) {
   deadline = null;
   currentIndex = -1;
   currentQid = null;
+  clearAllDrafts();
   screen('done');
 
   // Written by the server, because what to say depends on what actually happened: whether the
@@ -1367,6 +1485,7 @@ function startClock(getDraft) {
     if (!isBlank(draft) && currentIndex >= 0) {
       await api('answer', { index: currentIndex, questionId: currentQid, value: draft, ...signals });
     }
+    if (currentQid) clearDraft(currentQid);
     inFlight = false;
 
     // Retry a few times before falling back to the offline screen: this is the worst possible

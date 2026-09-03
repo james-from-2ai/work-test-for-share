@@ -36,6 +36,20 @@
   .ans-file { font-size: 0.85rem; margin: 0.4rem 0 0; padding: 0.35rem 0.5rem;
               border-left: 2px solid var(--warn); background: rgba(127,127,127,0.07); }
   button.ghost { font: inherit; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 0.3rem 0.6rem; color: inherit; cursor: pointer; }
+  button.ghost.danger { color: var(--danger); }
+  td.acts { white-space: nowrap; }
+  td.acts button + button { margin-left: 0.35rem; }
+
+  /* One candidate at a time. Seven columns with answers folded into a cell was already cramped,
+     and a reviewer reads one submission in full, not a row of them. */
+  .cand-head { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.6rem 1rem; margin: 0.6rem 0 1rem; }
+  .cand-head .k { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .cand-head .v { font-size: 0.9rem; }
+  .cand-route { font-size: 0.8rem; color: var(--muted); margin: 0 0 0.8rem; }
+  .cand-route code { font-size: 0.75rem; }
+  .cand-a { padding: 0.9rem 0 0.3rem; border-top: 1px solid var(--line); }
+  .cand-a .ans-body { max-width: none; }
+  .cand-foot { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; flex-wrap: wrap; padding-top: 1rem; margin-top: 0.5rem; border-top: 1px solid var(--line); }
 </style>
 </head>
 <body>
@@ -124,73 +138,116 @@ function renderRows(rows, base) {
     body.innerHTML = '<tr><td class="muted">No candidates yet. Issue a link above.</td></tr>';
   }
   body.insertAdjacentHTML('afterbegin', rows.length ? `<tr>
-    <th>Candidate</th><th>Status</th><th>Progress</th><th>Started</th><th>Answers</th><th></th><th></th></tr>` : '');
+    <th>Candidate</th><th>Status</th><th>Progress</th><th>Started</th><th></th></tr>` : '');
   for (const r of rows) {
     const tr = document.createElement('tr');
+    // Name and email are escaped; everything else interpolated here is server-controlled. Any
+    // candidate-written text only ever reaches the page through textContent, in the detail view.
     tr.innerHTML = `
       <td><strong>${esc(r.name)}</strong><br><span class="muted small">${esc(r.email || '')}</span></td>
       <td><span class="tag ${r.phase}">${r.phase}${r.ranOut ? ' (ran out)' : ''}</span></td>
       <td>${r.answered} / ${r.total == null ? '?' : r.total}</td>
       <td class="small">${fmt(r.startedAt)}</td>
-      <td class="ans-cell"></td>
-      <td class="small"><details><summary>link</summary><code>${base}?t=${r.token}</code></details></td>
-      <td class="small reset-cell"></td>`;
-    // Answers are built as nodes, never interpolated into HTML. Candidate text reaches the page
-    // only through textContent, so a formatted answer cannot carry markup into this page.
-    tr.querySelector('.ans-cell').append(answersCell(r));
-    tr.querySelector('.reset-cell').append(resetButton(r));
+      <td class="acts"></td>`;
+    const acts = tr.querySelector('.acts');
+    const view = document.createElement('button');
+    view.className = 'ghost';
+    view.textContent = r.answered ? `View ${r.answered} answer${r.answered === 1 ? '' : 's'}` : 'View';
+    view.addEventListener('click', () => openCandidate(r, base));
+    acts.append(view, copyLinkButton(r, base), resetButton(r));
     body.append(tr);
   }
   $('#table').replaceChildren(body);
 }
 
-/**
- * Deletes a session, which releases the email claim and is the only way to grant a second
- * attempt. Needed constantly while the team is trialling this and rarely afterwards, since for a
- * real candidate "only your first submission counts" is the whole point. It destroys their
- * answers, so it asks first and names who it is about.
- */
-function resetButton(r) {
+/** The candidate's own link, on the clipboard in one click rather than behind a disclosure. */
+function copyLinkButton(r, base) {
   const b = document.createElement('button');
   b.className = 'ghost';
-  b.textContent = 'Reset';
-  b.title = `Delete ${r.name}'s session so they can take the test again`;
+  b.textContent = 'Copy link';
+  b.title = `${base}?t=${r.token}`;
   b.addEventListener('click', async () => {
-    const warning = r.answered
-      ? `Delete ${r.name}'s session? This permanently removes the ${r.answered} answer${r.answered === 1 ? '' : 's'} they submitted, and lets them start again from a fresh clock.`
-      : `Delete ${r.name}'s session? They will be able to start again from a fresh clock.`;
-    if (!confirm(warning)) return;
-    b.disabled = true;
-    b.textContent = 'Resetting…';
-    const res = await admin('delete', { token: r.token });
-    if (res && res.ok) load();
-    else { b.disabled = false; b.textContent = 'Reset'; }
+    try {
+      await navigator.clipboard.writeText(`${base}?t=${r.token}`);
+      b.textContent = 'Copied';
+      setTimeout(() => { b.textContent = 'Copy link'; }, 1500);
+    } catch {
+      prompt('Copy this link:', `${base}?t=${r.token}`);
+    }
   });
   return b;
 }
 
-/** <details> holding one candidate's answers, or an em dash when they have not started. */
-function answersCell(r) {
+/**
+ * One candidate, in full: who, when, which route they took, and every answer with its file,
+ * timing and revision count. A dialog rather than a page so the list underneath keeps its place.
+ */
+function openCandidate(r, base) {
+  const dlg = document.createElement('dialog');
+  dlg.className = 'review';
+  document.body.append(dlg);
+  const close = () => { dlg.close(); dlg.remove(); };
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
+
+  const head = document.createElement('div');
+  head.className = 'review-head';
+  const h = document.createElement('h2');
+  h.textContent = r.name;
+  const tag = document.createElement('span');
+  tag.className = `tag ${r.phase}`;
+  tag.style.marginLeft = '0.6rem';
+  tag.textContent = `${r.phase}${r.ranOut ? ' (ran out)' : ''}`;
+  h.append(tag);
+  head.append(h);
+
+  const seconds = r.answers.reduce((n, a) => n + (a.msSpent || 0), 0) / 1000;
+  const facts = [
+    ['Email', r.email || '(none)'],
+    ['Started', fmt(r.startedAt)],
+    ['Finished', fmt(r.finishedAt)],
+    ['Time on questions', seconds ? `${Math.round(seconds / 60)} min` : '—'],
+    ['Progress', `${r.answered} / ${r.total == null ? '?' : r.total}`],
+  ];
+  const grid = document.createElement('div');
+  grid.className = 'cand-head';
+  for (const [k, v] of facts) {
+    const cell = document.createElement('div');
+    const kk = document.createElement('div'); kk.className = 'k'; kk.textContent = k;
+    const vv = document.createElement('div'); vv.className = 'v'; vv.textContent = v;
+    cell.append(kk, vv);
+    grid.append(cell);
+  }
+  head.append(grid);
+
+  if (r.answers.length) {
+    // The route is what makes a branching test readable: two candidates' fourth answers can be
+    // to different questions, and the ids say which.
+    const route = document.createElement('p');
+    route.className = 'cand-route';
+    route.append(document.createTextNode('Route: '));
+    const code = document.createElement('code');
+    code.textContent = r.answers.map((a) => a.id || `#${a.index + 1}`).join(' → ');
+    route.append(code);
+    head.append(route);
+  }
+  dlg.append(head);
+
   if (!r.answers.length) {
-    const dash = document.createElement('span');
-    dash.className = 'muted';
-    dash.textContent = '—';
-    return dash;
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = 'Nothing submitted yet.';
+    dlg.append(p);
   }
 
-  const details = document.createElement('details');
-  const summary = document.createElement('summary');
-  summary.textContent = `${r.answered} answer${r.answered === 1 ? '' : 's'}`;
-  const wrap = document.createElement('div');
-  wrap.className = 'ans';
-
   for (const a of r.answers) {
+    const sec = document.createElement('section');
+    sec.className = 'cand-a';
     const q = document.createElement('p');
     q.className = 'ans-q';
     const num = document.createElement('strong');
     num.textContent = `Q${a.index + 1}. `;
     q.append(num, document.createTextNode(a.prompt));
-    wrap.append(q);
+    sec.append(q);
 
     const body = document.createElement('div');
     body.className = 'ans-body';
@@ -202,36 +259,70 @@ function answersCell(r) {
     } else {
       renderAnswer(body, a.value);
     }
-    wrap.append(body);
+    sec.append(body);
 
-    // An attached file is the one thing on this page a reviewer has to act on rather than read,
-    // so it gets its own line rather than being folded into the timing note.
     if (a.upload) {
       const f = document.createElement('p');
       f.className = 'ans-file';
-      const tag = document.createElement('strong');
-      tag.textContent = 'File: ';
-      f.append(tag, document.createTextNode(`${a.upload.filename} (${Math.round(a.upload.size / 1000)} KB)`));
+      const ft = document.createElement('strong');
+      ft.textContent = 'File: ';
+      f.append(ft, document.createTextNode(`${a.upload.filename} (${Math.round(a.upload.size / 1000)} KB)`));
       const note = document.createElement('span');
       note.className = 'muted';
-      // Airtable's attachment urls expire, so pointing at the row is the link that keeps working.
       note.textContent = '. Open it from the Files column on this candidate\u2019s Airtable row, and download it rather than previewing it: it came from outside.';
       f.append(note);
-      wrap.append(f);
+      sec.append(f);
     }
 
     const meta = document.createElement('p');
     meta.className = 'muted small ans-meta';
-    const bits = [`${Math.round(a.msSpent / 1000)}s`];
+    const bits = [`${Math.round((a.msSpent || 0) / 1000)}s on this question`];
     if (a.revisions) bits.push(`revised ${a.revisions === 1 ? 'once' : `${a.revisions} times`}`);
     if (a.pastes) bits.push(`${a.pastes} paste${a.pastes > 1 ? 's' : ''}`);
     if (a.blurs) bits.push(`${a.blurs} tab switch${a.blurs > 1 ? 'es' : ''}`);
-    meta.textContent = `(${bits.join(', ')})`;
-    wrap.append(meta);
+    meta.textContent = bits.join(' · ');
+    sec.append(meta);
+    dlg.append(sec);
   }
 
-  details.append(summary, wrap);
-  return details;
+  const foot = document.createElement('div');
+  foot.className = 'cand-foot';
+  const left = document.createElement('div');
+  left.append(copyLinkButton(r, base), document.createTextNode(' '), resetButton(r, close));
+  const done = document.createElement('button');
+  done.className = 'primary';
+  done.textContent = 'Close';
+  done.addEventListener('click', close);
+  foot.append(left, done);
+  dlg.append(foot);
+
+  dlg.showModal();
+  done.focus();
+}
+
+/**
+ * Deletes a session, which releases the email claim and is the only way to grant a second
+ * attempt. Needed constantly while the team is trialling this and rarely afterwards, since for a
+ * real candidate "only your first submission counts" is the whole point. It destroys their
+ * answers, so it asks first and names who it is about.
+ */
+function resetButton(r, onDone) {
+  const b = document.createElement('button');
+  b.className = 'ghost danger';
+  b.textContent = 'Reset';
+  b.title = `Delete ${r.name}'s session so they can take the test again`;
+  b.addEventListener('click', async () => {
+    const warning = r.answered
+      ? `Delete ${r.name}'s session? This permanently removes the ${r.answered} answer${r.answered === 1 ? '' : 's'} they submitted, and lets them start again from a fresh clock.`
+      : `Delete ${r.name}'s session? They will be able to start again from a fresh clock.`;
+    if (!confirm(warning)) return;
+    b.disabled = true;
+    b.textContent = 'Resetting…';
+    const res = await admin('delete', { token: r.token });
+    if (res && res.ok) { if (onDone) onDone(); load(); }
+    else { b.disabled = false; b.textContent = 'Reset'; }
+  });
+  return b;
 }
 
 /** Renders a plain string or a block array. Text always goes in via textContent. */
