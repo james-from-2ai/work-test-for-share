@@ -750,10 +750,13 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
     }
 
     case 'review': {
-      // Everything already submitted, to look at and nothing more. There is deliberately no way
-      // to feed any of this back in: `answer` still accepts only index === answers.length, so
-      // reading an old answer cannot become editing it. Only questions actually reached appear
-      // here, so this can never reveal one the candidate has not seen.
+      // Everything already submitted, to look at. Reading an old answer can only become editing
+      // it when the test allows editing, and that goes through `answer` with its own checks, so
+      // nothing here needs to be defensive beyond sending only what was actually reached.
+      //
+      // The attachment is part of the answer and has to travel with it. Leaving it out meant a
+      // candidate who submitted a PDF and no text was shown "(left blank)" against their own
+      // work, which is alarming in exactly the situation where being alarmed is most costly.
       return view(rec, now, cfg, {
         review: rec.answers.map((a) => ({
           number: a.index + 1,
@@ -761,6 +764,8 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
           value: a.value,
           format: a.format || 'text',
           msSpent: a.msSpent,
+          upload: a.upload || null,
+          skipped: !!a.skipped,
         })),
       });
     }

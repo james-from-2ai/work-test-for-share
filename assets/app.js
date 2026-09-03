@@ -538,22 +538,31 @@ const richChars = (blocks) => blocks.reduce((n, b) => n + b.runs.reduce((m, r) =
  */
 let reviewOpen = false;
 
-/** Renders a stored answer, plain string or block array, as text nodes only. */
-function renderStoredAnswer(container, value) {
-  if (typeof value === 'string' || value == null) {
-    const p = document.createElement('p');
-    p.textContent = String(value || '').trim() || '(left blank)';
-    if (!String(value || '').trim()) p.className = 'muted';
-    container.append(p);
-    return;
-  }
-  if (!Array.isArray(value) || !value.length) {
+/**
+ * Renders a stored answer, plain string or block array, as text nodes only.
+ *
+ * `blank` is what to say when there is no text, and passing null says nothing at all. Both
+ * matter: a question answered with a file and nothing else is not blank, and when this is used
+ * to refill an editor the placeholder must not become part of what the candidate is editing.
+ */
+function renderStoredAnswer(container, value, { blank = '(left blank)' } = {}) {
+  const nothing = () => {
+    if (!blank) return;
     const p = document.createElement('p');
     p.className = 'muted';
-    p.textContent = '(left blank)';
+    p.textContent = blank;
+    container.append(p);
+  };
+
+  if (typeof value === 'string' || value == null) {
+    const text = String(value || '').trim();
+    if (!text) return nothing();
+    const p = document.createElement('p');
+    p.textContent = text;
     container.append(p);
     return;
   }
+  if (!Array.isArray(value) || !value.length) return nothing();
 
   let list = null;
   for (const b of value) {
@@ -578,6 +587,17 @@ function renderStoredAnswer(container, value) {
     if (!el.childNodes.length) el.innerHTML = '&nbsp;';
     (wantList ? list : container).append(el);
   }
+}
+
+/** Says which file was submitted, in the candidate's own words for it where there are any. */
+function fileLine(upload) {
+  const p = document.createElement('p');
+  p.className = 'review-file';
+  const tag = document.createElement('strong');
+  tag.textContent = 'File submitted: ';
+  const kb = Math.max(1, Math.round(upload.size / 1000));
+  p.append(tag, document.createTextNode(`${upload.filename} (${kb} KB)`));
+  return p;
 }
 
 async function openReview() {
@@ -606,7 +626,11 @@ async function openReview() {
   h.textContent = 'Your answers so far';
   const note = document.createElement('p');
   note.className = 'muted small';
-  note.textContent = 'These are final and cannot be changed. This is here so you can check what you already said.';
+  // The dialog used to promise these were final regardless of the setting, which would be a
+  // plain untruth on a test that allows revising.
+  note.textContent = res && res.navigation && res.navigation.edit
+    ? 'You can go back and change any of these while you still have time. This is here so you can check what you already said.'
+    : 'These are final and cannot be changed. This is here so you can check what you already said.';
   head.append(h, note);
   dlg.append(head);
 
@@ -633,7 +657,12 @@ async function openReview() {
     q.textContent = `Question ${a.number}. ${a.prompt}`;
     const body = document.createElement('div');
     body.className = 'review-a';
-    renderStoredAnswer(body, a.value);
+    renderStoredAnswer(body, a.value, {
+      blank: a.skipped ? 'Not reached: the time for this part ran out.'
+        : a.upload ? null
+        : '(left blank)',
+    });
+    if (a.upload) body.append(fileLine(a.upload));
     wrap.append(q, body);
     dlg.append(wrap);
   }
@@ -1123,7 +1152,7 @@ function prefill(q, given, field, canEdit) {
     const editor = field.querySelector('.rt-edit');
     if (editor) {
       editor.replaceChildren();
-      renderStoredAnswer(editor, given.value);
+      renderStoredAnswer(editor, given.value, { blank: null });
     }
   } else {
     const input = field.querySelector('input[type=text], textarea');

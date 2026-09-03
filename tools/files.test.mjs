@@ -239,6 +239,27 @@ test('an uploaded file survives a refresh, so nobody attaches it twice', async (
   assert.equal(res.upload.filename, 'workings.pdf');
 });
 
+test('reading back an answer shows the file, not "left blank"', async () => {
+  const store = storeWithFiles();
+  const token = await ready(store);
+  await handle(store, {
+    action: 'upload', token, questionId: 'submit_model',
+    filename: 'workings.pdf', contentType: 'application/pdf', data: PDF,
+  }, T0 + 1000, CFG);
+  // Deliberately no written answer: the file IS the answer here.
+  await handle(store, {
+    action: 'answer', token, index: 0, questionId: 'submit_model', value: 'Model',
+  }, T0 + 2000, CFG);
+
+  const res = await handle(store, { action: 'review', token }, T0 + 3000, CFG);
+  const first = res.review[0];
+  // Without this the review dialog told a candidate who had submitted a PDF that their answer
+  // was blank, which is alarming in exactly the situation where being alarmed is most costly.
+  assert.equal(first.upload.filename, 'workings.pdf');
+  assert.equal(first.upload.size > 0, true);
+  assert.equal(first.skipped, false);
+});
+
 test('the CSV carries the file name and size', async () => {
   const store = storeWithFiles();
   const token = await ready(store);
