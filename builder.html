@@ -280,6 +280,7 @@ function migrate(s) {
   s.navigation = { back: !!(s.navigation && s.navigation.back), edit: !!(s.navigation && s.navigation.edit) };
   s.integrity = { blockPaste: !!(s.integrity && s.integrity.blockPaste) };
   s.intro = s.intro && typeof s.intro === 'object' ? s.intro : {};
+  s.outro = s.outro && typeof s.outro === 'object' ? s.outro : {};
   s.notes = typeof s.notes === 'string' ? s.notes : '';
   s.briefs = s.briefs && typeof s.briefs === 'object' ? s.briefs : {};
   s.sections = Array.isArray(s.sections) && s.sections.length ? s.sections : STARTER().sections;
@@ -634,6 +635,14 @@ function drawSetup(stage) {
     field('Small print at the bottom (optional)', area(intro.closing, (v) => { if (v) intro.closing = v; else delete intro.closing; touch(); }, 3)),
     field('Contact address (optional)', input(intro.contactEmail, (v) => { if (v) intro.contactEmail = v; else delete intro.contactEmail; touch(); }),
       'Shown after the small print as a link they can click. Anything that is not an email address is ignored.')));
+
+  const outro = spec.outro = spec.outro && typeof spec.outro === 'object' ? spec.outro : {};
+  told.append(el('p', { class: 'colhead', text: 'After they submit' }));
+  told.append(el('p', { class: 'hint', text: 'What they submitted, and whether they can still change it, is written for you. This is the part only you know: what happens next, and by when.' }));
+  told.append(el('div', { class: 'row' },
+    field('What happens next (optional)', area(outro.closing, (v) => { if (v) outro.closing = v; else delete outro.closing; touch(); }, 3),
+      'For example how long a review takes and what a successful candidate can expect.'),
+    field('Contact address (optional)', input(outro.contactEmail, (v) => { if (v) outro.contactEmail = v; else delete outro.contactEmail; touch(); }))));
 
   page.append(told);
 
@@ -1208,6 +1217,7 @@ function specJson() {
     durationSec: spec.durationSec,
     notes: spec.notes || '',
     intro: spec.intro || {},
+    outro: spec.outro || {},
     timing: spec.timing,
     navigation: spec.navigation,
     integrity: spec.integrity,

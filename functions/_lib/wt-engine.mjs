@@ -33,7 +33,7 @@
  */
 
 import {
-  QUESTIONS, BRIEFS, SECTIONS, DURATION_SEC, GRACE_SEC, INTEGRITY, TIMING, NAVIGATION, INTRO,
+  QUESTIONS, BRIEFS, SECTIONS, DURATION_SEC, GRACE_SEC, INTEGRITY, TIMING, NAVIGATION, INTRO, OUTRO,
 } from './wt-questions.mjs';
 import { sanitizeRich, richIsEmpty, richToText, richWordCount } from './wt-rich.mjs';
 import {
@@ -102,6 +102,7 @@ export function config(overrides = {}) {
         : INTEGRITY.blockPaste === true,
     },
     intro: overrides.intro && typeof overrides.intro === 'object' ? overrides.intro : (INTRO || {}),
+    outro: overrides.outro && typeof overrides.outro === 'object' ? overrides.outro : (OUTRO || {}),
   };
 }
 
@@ -256,6 +257,55 @@ function normalizeTiming(o, sections) {
     if (Number.isFinite(mins) && mins > 0) limits[s.id] = Math.floor(mins * 60);
   }
   return { mode, totalSec, limits };
+}
+
+/**
+ * What the candidate is told once there are no more questions.
+ *
+ * This was a fixed paragraph, and it made two claims it could not keep: that the link would not
+ * reopen the task, which is untrue on a test that allows revising, and that "all N answers" were
+ * recorded, which overstates things when some of those N were never reached because a part's
+ * clock ran out. Both are worked out here instead.
+ */
+function outroFor(rec, cfg, phase, revisable) {
+  const answers = rec.answers || [];
+  const skipped = answers.filter((a) => a.skipped).length;
+  const given = answers.length - skipped;
+  const plural = (n) => (n === 1 ? '' : 's');
+
+  const outOfTime = phase === 'expired' || rec.ranOut;
+  const title = outOfTime ? 'Time is up' : 'Thank you, that is submitted';
+
+  let body;
+  if (outOfTime && skipped) {
+    body = `We have saved the ${given} answer${plural(given)} you gave. ${skipped} question${plural(skipped)} `
+      + `${skipped === 1 ? 'was' : 'were'} not reached because the time for that part ran out, and ${skipped === 1 ? 'it is' : 'they are'} `
+      + 'recorded that way rather than as something you chose not to answer.';
+  } else if (outOfTime) {
+    body = `Your time has run out, so the task has closed. We have saved the ${given} answer${plural(given)} `
+      + 'you submitted and those are what we will read.';
+  } else if (skipped) {
+    body = `Your ${given} answer${plural(given)} ${given === 1 ? 'is' : 'are'} recorded against your name and email. `
+      + `${skipped} question${plural(skipped)} ${skipped === 1 ? 'was' : 'were'} not reached in time.`;
+  } else {
+    body = `All ${given} answer${plural(given)} ${given === 1 ? 'is' : 'are'} recorded against your name and email.`;
+  }
+
+  const note = revisable
+    ? 'You can close this tab if you like. Coming back to this link while you still have time lets you '
+      + 'change what you submitted.'
+    : 'You can close this tab. Coming back to this link will show you what you submitted, but the task '
+      + 'itself is finished.';
+
+  return {
+    title,
+    body,
+    note,
+    closing: clamp(cfg.outro.closing, 1000).trim() || null,
+    contactEmail: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(cfg.outro.contactEmail || '').trim())
+      ? String(cfg.outro.contactEmail).trim()
+      : null,
+  };
 }
 
 /* ------------------------------------------------------------ per-question rules ---- */
@@ -548,6 +598,11 @@ function view(rec, now, cfg, extra = {}) {
   const shownId = looking === null ? frontierId : rec.answers[looking].id;
   const shownSection = sectionIdOf(questionById(shownId, cfg.questions), cfg);
 
+  // Revision stays open after the last question on a test that allows it. Without this the
+  // setting was unreachable: the engine accepted a revision, but stepping back once the route
+  // had ended served no question to revise, so nothing could ever ask for one.
+  const revisable = cfg.navigation.edit && !!rec.startedAt && phase !== 'expired' && !rec.ranOut;
+
   const out = {
     ok: true,
     phase,
@@ -560,6 +615,7 @@ function view(rec, now, cfg, extra = {}) {
     viewingIndex: looking,
     canGoBack: cfg.navigation.back && (looking === null ? answered > 0 : looking > 0),
     canGoForward: looking !== null,
+    canRevise: revisable && answered > 0,
     // Null when the routes ahead differ in length. The range is sent alongside so a page can
     // still say something true, like "between 5 and 7 questions", instead of inventing a number.
     total: ahead.certain ? answered + ahead.max : null,
@@ -575,7 +631,7 @@ function view(rec, now, cfg, extra = {}) {
   if (deadline != null) out.deadline = deadline;
   if (cfg.timing.mode === 'section') out.clockFor = shownSection;
 
-  if (phase === 'running') {
+  if (phase === 'running' || (looking !== null && revisable)) {
     if (looking === null) {
       out.question = publicQuestion(frontierId, rec.answers, cfg);
       // A file already uploaded for this question, so refreshing or coming back on another
@@ -600,7 +656,10 @@ function view(rec, now, cfg, extra = {}) {
       };
       out.editable = cfg.navigation.edit;
     }
-    out.progress = progressOf(rec.answers, frontierId, cfg);
+    // Anchored on the question being LOOKED AT, not the frontier. After the route ends the frontier
+    // is null, and progress built against it had no current part, which the page could not draw.
+    // It is also simply more truthful: "Part 2 of 3" should describe the question on screen.
+    out.progress = progressOf(rec.answers, looking === null ? frontierId : shownId, cfg);
   }
   // On the instructions screen there is no current question, but the shape of the task is
   // exactly what someone deciding whether to press start wants to see.
@@ -608,6 +667,7 @@ function view(rec, now, cfg, extra = {}) {
     out.progress = progressOf([], firstQuestionId(cfg.questions), cfg);
     out.intro = introFor(cfg);
   }
+  if (phase === 'done' || phase === 'expired') out.outro = outroFor(rec, cfg, phase, revisable);
   return out;
 }
 

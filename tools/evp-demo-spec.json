@@ -39,6 +39,10 @@
     "closing": "Please do not share this task with anyone outside Evidence Action / 2AI. If you need a different format or an accommodation because of a disability, write to us before you begin and we will sort it out:",
     "contactEmail": "careers@aiaccessinitiative.org"
   },
+  "outro": {
+    "closing": "Our team aims to review submissions within 5 business days, and successful candidates will be invited to a follow-up interview that references this work. If anything went wrong while you were working, write to us:",
+    "contactEmail": "careers@aiaccessinitiative.org"
+  },
   "sections": [
     {
       "id": "p1",

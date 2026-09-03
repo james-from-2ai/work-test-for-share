@@ -400,6 +400,114 @@ test('the instructions are not sent once the test is under way', async () => {
   assert.equal(res.intro, undefined);
 });
 
+/* ------------------------------------------------------- the closing screen -------- */
+
+test('the closing screen counts what was given, not what was reached', async () => {
+  // Section mode, come back after Part 1 has expired: two questions skipped, one left to answer.
+  const store = memStore();
+  const cfg = make({ timing: { mode: 'section' } });
+  const token = await started(store, cfg);
+  const later = T0 + 60 * 60 * 1000;
+  await handle(store, { action: 'answer', token, index: 2, value: 'c' }, later, cfg);
+  const res = await handle(store, { action: 'state', token }, later + 1000, cfg);
+
+  assert.equal(res.phase, 'done');
+  // "All 3 answers are recorded" would be the old, overstated claim. One was given; two were not.
+  assert.match(res.outro.body, /1 answer/);
+  assert.match(res.outro.body, /2 questions were not reached/);
+  assert.equal(res.outro.body.includes('All 3'), false);
+});
+
+test('the closing screen does not promise the link is dead when revising is allowed', async () => {
+  const closed = memStore();
+  const plain = make();
+  const t1 = await started(closed, plain);
+  await handle(closed, { action: 'answer', token: t1, index: 0, value: 'a' }, T0 + 1000, plain);
+  await handle(closed, { action: 'answer', token: t1, index: 1, value: 'b' }, T0 + 2000, plain);
+  const fin = await handle(closed, { action: 'answer', token: t1, index: 2, value: 'c' }, T0 + 3000, plain);
+  assert.equal(fin.phase, 'done');
+  assert.match(fin.outro.note, /the task itself is finished/);
+  assert.equal(fin.canRevise, false);
+
+  const open = memStore();
+  const editable = make({ navigation: { back: true, edit: true } });
+  const t2 = await started(open, editable);
+  await handle(open, { action: 'answer', token: t2, index: 0, value: 'a' }, T0 + 1000, editable);
+  await handle(open, { action: 'answer', token: t2, index: 1, value: 'b' }, T0 + 2000, editable);
+  const fin2 = await handle(open, { action: 'answer', token: t2, index: 2, value: 'c' }, T0 + 3000, editable);
+  assert.equal(fin2.phase, 'done');
+  assert.match(fin2.outro.note, /lets you change what you submitted/);
+  assert.equal(fin2.canRevise, true);
+});
+
+test('stepping back after finishing serves the question, so revising is reachable', async () => {
+  // Before this, the engine accepted a revision after the route ended but `back` served no
+  // question to revise, so the setting was switched on and impossible to use.
+  const store = memStore();
+  const cfg = make({ navigation: { back: true, edit: true } });
+  const token = await started(store, cfg);
+  await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 1000, cfg);
+  await handle(store, { action: 'answer', token, index: 1, value: 'b' }, T0 + 2000, cfg);
+  await handle(store, { action: 'answer', token, index: 2, value: 'c' }, T0 + 3000, cfg);
+
+  const back = await handle(store, { action: 'back', token }, T0 + 4000, cfg);
+  assert.equal(back.phase, 'done', 'stepping back should not un-finish the test by itself');
+  assert.ok(back.question, 'no question was served to revise');
+  assert.equal(back.question.id, 'c');
+  assert.equal(back.given.value, 'c');
+  assert.equal(back.editable, true);
+
+  const rev = await handle(store, { action: 'answer', token, index: 2, value: 'c, improved' }, T0 + 5000, cfg);
+  assert.equal(rev.revised, true);
+  const check = await handle(store, { action: 'review', token }, T0 + 6000, cfg);
+  assert.equal(check.review[2].value, 'c, improved');
+});
+
+test('looking back after finishing describes the part on screen, not a frontier that is gone', async () => {
+  // The client draws "Part N of M" from progress.sectionNumber. Built against the frontier, which
+  // is null once the route has ended, that number was 0, the page indexed sections[-1], and the
+  // whole question screen threw before filling a single hook. Anchoring on the question being
+  // looked at fixes it and is also simply more truthful.
+  const store = memStore();
+  const cfg = make({ navigation: { back: true, edit: true } });
+  const token = await started(store, cfg);
+  await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 1000, cfg);
+  await handle(store, { action: 'answer', token, index: 1, value: 'b' }, T0 + 2000, cfg);
+  await handle(store, { action: 'answer', token, index: 2, value: 'c' }, T0 + 3000, cfg);
+
+  const back = await handle(store, { action: 'back', token }, T0 + 4000, cfg);
+  assert.ok(back.progress, 'no progress sent with the question');
+  const here = back.progress.sections[back.progress.sectionNumber - 1];
+  assert.ok(here, `sectionNumber ${back.progress.sectionNumber} points at no part`);
+  assert.equal(here.id, 'p2', 'the part described is not the one the question belongs to');
+});
+
+test('once the clock has run out, nothing can be revised and the screen says so', async () => {
+  const store = memStore();
+  const cfg = make({ durationSec: 60, navigation: { back: true, edit: true } });
+  const token = await started(store, cfg);
+  await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 1000, cfg);
+
+  const late = T0 + 10 * 60 * 1000;
+  const res = await handle(store, { action: 'state', token }, late, cfg);
+  assert.equal(res.phase, 'expired');
+  assert.equal(res.canRevise, false);
+  assert.equal(res.outro.title, 'Time is up');
+  const rev = await handle(store, { action: 'answer', token, index: 0, value: 'too late' }, late + 1000, cfg);
+  assert.equal(rev.rejected, 'expired');
+});
+
+test('the author’s closing words and contact address come through', async () => {
+  const store = memStore();
+  const cfg = make({ outro: { closing: 'We review within 5 business days.', contactEmail: 'careers@aiaccessinitiative.org' } });
+  const token = await started(store, cfg);
+  await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 1000, cfg);
+  await handle(store, { action: 'answer', token, index: 1, value: 'b' }, T0 + 2000, cfg);
+  const res = await handle(store, { action: 'answer', token, index: 2, value: 'c' }, T0 + 3000, cfg);
+  assert.equal(res.outro.closing, 'We review within 5 business days.');
+  assert.equal(res.outro.contactEmail, 'careers@aiaccessinitiative.org');
+});
+
 /* ------------------------------------------------------------ paste ---------------- */
 
 test('paste blocking is a test-wide setting a question can override', async () => {

@@ -43,6 +43,13 @@ export const INTEGRITY = { blockPaste: false };
  */
 export const INTRO = {};
 
+/**
+ * The closing screen's author-written half: the small print about what happens next, and who to
+ * write to. What was actually submitted, and whether anything can still be changed, is worked
+ * out by the engine so the page cannot claim a task is finished when it is not.
+ */
+export const OUTRO = {};
+
 export const TIMING = { mode: 'total' };
 export const NAVIGATION = { back: false, edit: false };
 

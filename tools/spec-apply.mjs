@@ -151,6 +151,12 @@ export const NAVIGATION = ${lit(spec.navigation || { back: false, edit: false })
 export const INTRO = ${lit(spec.intro || {})};
 
 /**
+ * The closing screen's author-written half. What was submitted, and whether it can still be
+ * changed, is worked out by the engine.
+ */
+export const OUTRO = ${lit(spec.outro || {})};
+
+/**
  * The parts of the task, in order, with how long each is expected to take. \`recommendedMin\`
  * drives the weighting of the progress bar, so a candidate can see which part is the bulk of
  * the work rather than counting questions and assuming the halfway question is the halfway

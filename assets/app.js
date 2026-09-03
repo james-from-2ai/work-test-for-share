@@ -1014,7 +1014,10 @@ function renderQuestion(state) {
   const canEdit = past ? !!state.editable : true;
 
   const p = state.progress;
-  hook('section').textContent = p ? `${p.sections[p.sectionNumber - 1].label} of ${p.sectionTotal} · ` : '';
+  // Defensive on purpose. A payload with no current part once took the whole screen down before a
+  // single hook was filled; a missing label is a far better failure than an empty page.
+  const herePart = p && p.sections[p.sectionNumber - 1];
+  hook('section').textContent = herePart ? `${herePart.label} of ${p.sectionTotal} · ` : '';
   const inPart = p && p.inSectionTotal == null
     ? `Question ${p.inSection} in this part`
     : p ? `Question ${p.inSection} of ${p.inSectionTotal} in this part` : '';
@@ -1288,18 +1291,47 @@ function renderDone(state) {
   currentIndex = -1;
   currentQid = null;
   screen('done');
-  const n = state.answered;
-  if (state.phase === 'expired' || state.ranOut) {
-    hook('title').textContent = 'Time is up';
-    hook('body').textContent = `Your time has run out, so the task has closed. We have saved the ${n} answer${n === 1 ? '' : 's'} you submitted and those are what we will read.`;
-  } else {
-    hook('title').textContent = 'Thank you, that is submitted';
-    hook('body').textContent = `All ${n} answers are recorded against your name and email.`;
+  // Written by the server, because what to say depends on what actually happened: whether the
+  // time ran out, whether any questions went unreached, and whether anything can still change.
+  const outro = state.outro || {};
+  hook('title').textContent = outro.title || 'Submitted';
+  hook('body').textContent = outro.body || '';
+  if (outro.note) hook('note').textContent = outro.note;
+
+  const closing = hook('closing');
+  if (outro.closing || outro.contactEmail) {
+    closing.textContent = outro.closing || '';
+    if (outro.contactEmail) {
+      const a = document.createElement('a');
+      a.href = `mailto:${outro.contactEmail}`;
+      a.textContent = outro.contactEmail;
+      if (outro.closing) closing.append(document.createTextNode(' '));
+      closing.append(a);
+    }
+    closing.hidden = false;
   }
 
   // Reading back what they submitted is still allowed once the task has closed.
   const review = reviewButton(state);
   if (review) hook('body').after(review);
+
+  // And on a test that allows revising, there has to be a way back to the answers. Without this
+  // the server would accept a revision that nothing could ever ask for.
+  if (state.canRevise) {
+    const change = document.createElement('button');
+    change.type = 'button';
+    change.className = 'ghost-btn';
+    change.textContent = 'Go back and change an answer';
+    change.addEventListener('click', async () => {
+      if (inFlight) return;
+      inFlight = true;
+      const res = await api('back');
+      inFlight = false;
+      if (isTransient(res)) return showError(res.detail || RETRY_MSG);
+      render(res);
+    });
+    hook('body').after(change);
+  }
 
   // Only ever shown when the server says ALLOW_SELF_RESET is on, and the server refuses the
   // action regardless of what this page renders. Hiding a button is not a security control.
@@ -1425,7 +1457,9 @@ function render(state) {
   if (state.phase === 'anonymous') {
     return state.openRegistration ? renderIdentify(state) : renderInvalid();
   }
-  if (state.phase === 'running') {
+  // A question is served either because the test is still running, or because they stepped back
+  // to revise one on a test that allows it. Both render the same screen.
+  if (state.question) {
     guardNavigation();
     return renderQuestion(state);
   }

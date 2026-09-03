@@ -114,7 +114,11 @@
   <section class="card">
     <h1 data-hook="title">Submitted</h1>
     <p data-hook="body"></p>
-    <p class="muted">You can close this tab. There is nothing else to do, and this link will not reopen the task. Our team aims to review submissions within 5 business days, and successful candidates will be invited to a follow-up interview that references this work.</p>
+    <!-- Both filled in by the server. This used to be a fixed paragraph promising that the link
+         would not reopen the task, which is untrue on a test that allows revising, and that
+         "all" answers were recorded, which overstates it when a part's clock cut some off. -->
+    <p class="muted" data-hook="note"></p>
+    <p class="muted small" data-hook="closing" hidden></p>
     <div class="testing-only" data-hook="resetbox" hidden>
       <p><strong>Internal testing</strong>. This box is only here because <code>ALLOW_SELF_RESET</code> is switched on. Candidates must never see it, so turn that variable off before sending this to anyone outside the team.</p>
       <button class="ghost-btn" data-hook="reset">Wipe this session and start over</button>
