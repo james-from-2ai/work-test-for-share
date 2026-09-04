@@ -104,7 +104,7 @@ const REJECTIONS = {
   no_choice: 'Select one option to continue.',
   too_many_files: 'This question already has as many files as it takes.',
   bad_link: 'One of the links is not a web address. Each line should be one link starting with https://.',
-  not_confirmed: 'Tick the confirmation box before you lock in.',
+  not_confirmed: 'That was not confirmed, so nothing was submitted. Press the button again and confirm.',
 };
 
 /* ---------------------------------------------------------------------- drafts ------- */
@@ -1149,7 +1149,6 @@ function renderQuestion(state) {
   let attachment = null;
   let focusEditor = null;
   let readLinks = () => [];
-  let confirmBox = null; // the checkbox a question can demand before it is locked in
   const refreshNext = () => { next.disabled = over || (attachment ? attachment.busy() : false); };
 
   // Drafts are for the question being answered, never for one being looked back at: there the
@@ -1488,27 +1487,10 @@ function renderQuestion(state) {
   }
 
   /**
-   * An explicit confirmation before locking in, when the question asks for one: "I have answered
-   * all four questions". Never pre-ticked and never remembered in a draft, because the point is the
-   * act of confirming this submission. The server refuses the answer without it as well.
-   */
-  if (q.confirm && !past) {
-    const row = document.createElement('label');
-    row.className = 'confirm-row';
-    confirmBox = document.createElement('input');
-    confirmBox.type = 'checkbox';
-    confirmBox.className = 'confirm-box';
-    const txt = document.createElement('span');
-    txt.textContent = q.confirm;
-    row.append(confirmBox, txt);
-    confirmBox.addEventListener('change', () => { row.classList.toggle('on', confirmBox.checked); showError(''); refreshNext(); });
-    field.append(row);
-  }
-
-  /**
    * One gate over both halves of an answer, because 'either' cannot be expressed as two
    * independent checks: neither half is required alone, but leaving both empty is not an answer.
-   * The server re-checks all of this; this exists so the candidate hears why before the round trip.
+   * The server re-checks all of this; this exists so the candidate hears why before the round trip,
+   * and so the confirmation dialog is only ever raised over an answer that is actually complete.
    */
   const requirementCheck = () => {
     // With a chooser shown, only the chosen half counts: a file attached earlier does not stand in
@@ -1534,14 +1516,6 @@ function renderQuestion(state) {
       case 'optional': return null;
       default: return hasText ? null : blankMsg;
     }
-  };
-
-  /** Everything the answer needs, then the confirmation, in that order, so the message is about the right thing. */
-  const readyCheck = () => {
-    const blocked = requirementCheck();
-    if (blocked) return blocked;
-    if (confirmBox && !confirmBox.checked) return REJECTIONS.not_confirmed;
-    return null;
   };
 
   /**
@@ -1597,11 +1571,8 @@ function renderQuestion(state) {
     }
 
     const value = read();
-    const blocked = readyCheck();
-    if (blocked) {
-      if (confirmBox && blocked === REJECTIONS.not_confirmed) confirmBox.focus({ preventScroll: false });
-      return showError(blocked);
-    }
+    const blocked = requirementCheck();
+    if (blocked) return showError(blocked);
 
     if (q.isLast && !past && !armed && !confirmDiscard) return arm();
 
@@ -1631,7 +1602,9 @@ function renderQuestion(state) {
     const res = await api('answer', {
       index: q.index, questionId: q.id, value, confirmDiscard, ...signals,
       ...(q.links ? { links: readLinks() } : {}),
-      ...(confirmBox ? { confirmed: confirmBox.checked } : {}),
+      // Only ever true, and only reached by accepting the dialog above: the server refuses the
+      // answer without it, so the candidate's confirmation is what carries it.
+      ...(q.confirm && !past ? { confirmed: true } : {}),
     });
     inFlight = false;
 
@@ -1940,10 +1913,13 @@ function confirmLockIn({ part, statement, lines }) {
     h.textContent = part ? `Lock in ${part}?` : 'Lock in this answer?';
     dlg.append(h);
 
+    const asks = document.createElement('p');
+    asks.className = 'lockin-label';
+    asks.textContent = 'By locking in you confirm:';
     const said = document.createElement('p');
     said.className = 'lockin-statement';
     said.textContent = statement;
-    dlg.append(said);
+    dlg.append(asks, said);
 
     if (lines.length) {
       const what = document.createElement('p');

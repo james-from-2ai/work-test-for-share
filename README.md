@@ -110,12 +110,13 @@ Then open `/admin.html`, paste the admin key, and issue a link per candidate.
   finds it separated by stage with the transcripts attached alongside.
 - **Nothing is a surprise.** The instructions open with three short tiles (time, structure,
   format) and six rules in one panel, and the progress bar is a numbered stepper ending on the
-  review step. Sealing a stage takes two deliberate acts: a tick against a statement that the
-  response covers every question in it (four in Stage 1, three in Stage 2), which the server
-  enforces as well, and then a modal that repeats the statement and names what is about to be
-  recorded, the option selected and the PDF attached or the word count typed, with "Not yet, take
-  me back" alongside "Yes, lock it in". The final submission on the review screen turns red, and
-  the closing screen greets the candidate by name. A light/dark toggle sits at the top right; without a choice the
+  review step. Sealing a stage raises one modal, which is where the candidate confirms: it carries
+  the statement that their response covers every question in the stage (four in Stage 1, three in
+  Stage 2) under "By locking in you confirm", names what is about to be recorded, the option
+  selected and the PDF attached or the word count typed, and offers "Not yet, take me back"
+  alongside "Yes, lock it in". The server refuses the answer unless that confirmation came with it.
+  The final submission on the review screen turns red, and the closing screen greets the candidate
+  by name. A light/dark toggle sits at the top right; without a choice the
   page follows the device setting, and a choice is remembered in that browser only.
 
 ## Which build is live
@@ -216,9 +217,11 @@ A `decision` question is a choice and a formatted write-up on one screen, stored
 `choice`. `optionPrompt` and `responsePrompt` label the two halves. Any `either` question can
 carry `modes` to reword the type-or-attach chooser, and `maxFiles` to take several files. When the
 file part is a section of its own, `attachmentPrompt` and `attachmentHelp` label it. A question can
-carry `confirm: "..."`, a statement the candidate must tick before the answer is accepted (the
-server refuses without `confirmed: true`, the tick is recorded on the answer, and the page shows a
-modal repeating the statement and what is about to be recorded before it sends anything). A
+carry `confirm: "..."`, a statement the candidate must agree to before the answer is accepted. The
+page raises it as a modal over a complete answer, alongside what is about to be recorded; accepting
+is what sends `confirmed: true`, the server refuses the answer without it, and the confirmation is
+recorded on the answer. There is deliberately no second tick box on the question: one statement,
+confirmed once, at the moment it means something. A
 question can carry `branchFrom: "<question id>"` to be asked between a branching question and the
 routes its options choose between; the branch point's own `next`, and any `next` on the detour, are
 then not used. The top-level `review` block turns the last screen on: `label`, `summary`,
