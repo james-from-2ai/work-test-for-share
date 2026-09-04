@@ -506,6 +506,9 @@ function publicQuestion(id, answers, cfg) {
       acceptText: `Upload a ${describeAllowed(acceptOf(q))}, up to ${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB.`,
       maxBytes: MAX_UPLOAD_BYTES,
       maxFiles: maxFilesOf(q),
+      // Author labels for the file part of a question, when it is a section of its own.
+      attachmentPrompt: clamp(q.attachmentPrompt, 200).trim() || null,
+      attachmentHelp: clamp(q.attachmentHelp, 600).trim() || null,
     } : {}),
   };
 }

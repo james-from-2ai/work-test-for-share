@@ -81,18 +81,23 @@ p { margin: 0 0 0.9rem; }
   margin-bottom: 0.5rem;
 }
 
-/* Each rule is its own small block rather than a bullet in a wall of them, so a candidate can
-   scan the bold leads and read only the ones they need. */
-.rules { margin: 0 0 1.25rem; padding: 0; list-style: none; }
-.rules li {
-  margin-bottom: 0.5rem;
-  padding: 0.6rem 0.9rem;
-  border-left: 3px solid var(--accent);
+/* The rules as one panel, each a labelled section divided by a hairline. One block to read
+   rather than a stack of six, with the bold leads doing the signposting. */
+.rules {
+  margin: 0 0 1.35rem;
+  padding: 0 1.15rem;
+  list-style: none;
   background: var(--bg);
-  border-radius: 0 8px 8px 0;
-  line-height: 1.5;
+  border: 1px solid var(--line);
+  border-radius: 12px;
 }
-.rules li strong { display: block; margin-bottom: 0.15rem; }
+.rules li {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--line);
+  line-height: 1.55;
+}
+.rules li:last-child { border-bottom: 0; }
+.rules li strong { display: block; margin-bottom: 0.2rem; font-size: 0.95rem; }
 
 /* Time, structure, format: the three things read before anything else. */
 .glance {
@@ -371,6 +376,7 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, label:focus-w
 
 /* A decision question: pick an option, then the write-up. Two labelled parts of one answer. */
 .part-label { font-size: 0.95rem; font-weight: 700; margin: 1.2rem 0 0.5rem; }
+.part-help { font-size: 0.88rem; color: var(--muted); margin: -0.2rem 0 0.6rem; }
 .part-label:first-child { margin-top: 0; }
 .files-list { margin: 0.45rem 0 0.4rem; padding-left: 1.1rem; font-size: 0.9rem; }
 .files-list li { margin-bottom: 0.2rem; }

@@ -1316,6 +1316,20 @@ function renderQuestion(state) {
   }
 
   if (q.attachment && q.attachment !== 'none') {
+    // When the file part is a section of its own (say, transcripts under a written disclosure),
+    // it gets its own label and help text, so nobody mistakes it for an alternative to the box.
+    if (q.attachmentPrompt) {
+      const lbl = document.createElement('p');
+      lbl.className = 'part-label';
+      lbl.textContent = q.attachmentPrompt;
+      fileWrap.append(lbl);
+    }
+    if (q.attachmentHelp) {
+      const help = document.createElement('p');
+      help.className = 'part-help';
+      help.textContent = q.attachmentHelp;
+      fileWrap.append(help);
+    }
     attachment = attachmentField(q, state, fileWrap, refreshNext);
     field.append(fileWrap);
   }

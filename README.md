@@ -3,8 +3,8 @@
 The take-home exercise for the **Executive Vice President, Evidence** role at Evidence Action,
 "MMS Nigeria: The Expansion Gate", served as a hosted, two-stage work test. Candidates open a
 link, read the Stage 1 case, and on one screen select the option they recommend and submit their
-write-up (typed or as a PDF). The option routes them to one of three Stage 2 paths, then two closing
-questions on AI use. Stage 2 is not visible until Stage 1 is submitted, and Stage 1 cannot be
+write-up (typed or as a PDF). The option routes them to one of three Stage 2 paths, then one closing
+question on AI use with their transcripts attached. Stage 2 is not visible until Stage 1 is submitted, and Stage 1 cannot be
 changed afterwards.
 
 The test is at `/`, the results board at `/admin.html`, and the authoring tool at `/builder.html`.
@@ -78,20 +78,21 @@ Then open `/admin.html`, paste the admin key, and issue a link per candidate.
   the server, so a candidate can close the page and return to the same link.
 - **Gated and branching.** Stage 1 is one `decision` question: the whole case, the choice of
   Option 1, 2 or 3, and the write-up on a single screen, locked in together. The option routes to
-  Path A, B or C for Stage 2. After Stage 2 come two closing questions: how the candidate used AI
-  (three bulleted points), then their transcripts (up to 8 PDFs, or pasted share links, required if
-  they used AI). A candidate never sees the destination of an option before choosing it.
+  Path A, B or C for Stage 2. After Stage 2 comes one closing question: how the candidate used AI
+  (three bulleted points, a required written answer) with their transcripts as a labelled section
+  beneath it (up to 8 PDFs, required if they used AI). A candidate never sees the destination of an
+  option before choosing it.
 - **Look back, not change.** Candidates can re-read their Stage 1 submission while working on
   Stage 2, since the memo they are answering refers to it. They cannot edit it.
 - **Type it or attach it.** Each write-up question first asks how the candidate wants to respond,
   then shows only that input: the formatting editor, or a PDF upload (up to 4.5 MB, verified byte
   by byte). Word and Google Docs users are told to save as PDF, and everyone is advised to draft
   in a word processor so they keep their own copy. Word documents are not accepted on this test.
-- **AI use is allowed.** The disclosure the source document asks for is two closing questions
+- **AI use is allowed.** The disclosure the source document asks for is one closing question
   after both stages rather than a paragraph at the end of each response, so a reviewer finds it
   in one place, with the transcripts attached alongside.
 - **Nothing is a surprise.** The instructions open with three short tiles (time, structure,
-  format) and six rules, the progress bar is a numbered stepper, the button that seals Stage 1
+  format) and six rules in one panel, the progress bar is a numbered stepper, the button that seals Stage 1
   says "Lock in and continue to Stage 2", the final confirmation turns red, and the closing screen
   greets the candidate by name.
 
@@ -116,7 +117,7 @@ every request, so changing which question follows which can move where a sitting
 next answer lands. Wording changes are safe.
 
 Two things to know about text lengths. Rich answers are capped per question (24,000 characters
-for the Stage 1 write-up, 12,000 for Stage 2, 4,000 for each closing AI question), and a
+for the Stage 1 write-up, 12,000 for Stage 2, 4,000 for the closing AI question), and a
 candidate's whole session has to fit in one Airtable long-text cell, so a very long typed response
 is refused with a message rather than silently truncated. The instructions steer long or
 table-heavy responses towards attaching a PDF, which has no such limit below 4.5 MB.
@@ -179,7 +180,8 @@ rides on it for the sentence only an author knows (which tool to draft in, how t
 A `decision` question is a choice and a formatted write-up on one screen, stored as one answer
 (`choiceIndex`, `choice`, and the write-up as `value`); its options branch exactly like a
 `choice`. `optionPrompt` and `responsePrompt` label the two halves. Any `either` question can
-carry `modes` to reword the type-or-attach chooser, and `maxFiles` to take several files.
+carry `modes` to reword the type-or-attach chooser, and `maxFiles` to take several files. When the
+file part is a section of its own, `attachmentPrompt` and `attachmentHelp` label it.
 
 Two things the candidate page does on its own. It keeps a draft of whatever is being typed in the
 browser and restores it if the page is closed or crashes before the answer is submitted; nothing

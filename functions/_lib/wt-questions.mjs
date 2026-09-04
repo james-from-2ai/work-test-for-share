@@ -14,11 +14,11 @@
  * is timed, because the doc says 'please use the time you need', and the suggested times are
  * shown instead; candidates can re-read their Stage 1 submission while working on Stage 2 but
  * cannot change it; responses are typed or attached as PDF only (Word and Google Docs users
- * are told to save as PDF); and the AI use disclosure is two closing questions after both
- * stages (how AI was used, then transcripts, several files allowed) rather than a paragraph at
- * the end of each response. Stage 1 is a single 'decision' question: the option and the
- * write-up on one screen, routed by the option. The scenario is fictionalized by Evidence
- * Action and the doc says so to the candidate.
+ * are told to save as PDF); and the AI use disclosure is one closing question after both
+ * stages (how AI was used, with the transcripts attached beneath it as a labelled section,
+ * several files allowed) rather than a paragraph at the end of each response. Stage 1 is a
+ * single 'decision' question: the option and the write-up on one screen, routed by the option.
+ * The scenario is fictionalized by Evidence Action and the doc says so to the candidate.
  *
  * These questions live server-side on purpose. The candidate's browser is only ever sent the
  * question it is currently on, plus the brief for the part it belongs to, and an option's
@@ -76,7 +76,7 @@ export const INTRO = {
       },
       {
         "lead": "You may use AI tools.",
-        "text": "We are not testing whether you can complete this exercise without them, but we expect your submission to include your own thinking and analysis, and we are interested in how you use them. After Stage 2 there are two closing questions: how you used AI, and your transcripts. You do not need to write a disclosure inside your responses."
+        "text": "We are not testing whether you can complete this exercise without them, but we expect your submission to include your own thinking and analysis, and we are interested in how you use them. After Stage 2 there is one final short question about how you used AI, with space to attach your transcripts. You do not need to write a disclosure inside your responses."
       }
     ],
     "sections": [
@@ -697,9 +697,9 @@ export const BRIEFS = {
           "title": "Stage 2 of 2",
           "items": [
             "Your Stage 1 response is submitted and cannot be revised. You can re-read it with the Review link below.",
-            "We suggest 1 to 1.5 hours.",
+            "We suggest spending 1 to 1.5 hours on this part.",
             "Respond by typing or pasting into the box, or attach a PDF.",
-            "After this there are two short closing questions about your use of AI."
+            "After you submit this part, there will be one final short question about your use of AI during this exercise."
           ]
         },
         {
@@ -752,9 +752,9 @@ export const BRIEFS = {
           "title": "Stage 2 of 2",
           "items": [
             "Your Stage 1 response is submitted and cannot be revised. You can re-read it with the Review link below.",
-            "We suggest 1 to 1.5 hours.",
+            "We suggest spending 1 to 1.5 hours on this part.",
             "Respond by typing or pasting into the box, or attach a PDF.",
-            "After this there are two short closing questions about your use of AI."
+            "After you submit this part, there will be one final short question about your use of AI during this exercise."
           ]
         },
         {
@@ -807,9 +807,9 @@ export const BRIEFS = {
           "title": "Stage 2 of 2",
           "items": [
             "Your Stage 1 response is submitted and cannot be revised. You can re-read it with the Review link below.",
-            "We suggest 1 to 1.5 hours.",
+            "We suggest spending 1 to 1.5 hours on this part.",
             "Respond by typing or pasting into the box, or attach a PDF.",
-            "After this there are two short closing questions about your use of AI."
+            "After you submit this part, there will be one final short question about your use of AI during this exercise."
           ]
         },
         {
@@ -877,13 +877,13 @@ export const BRIEFS = {
         }
       ]
     },
-    "ai_use": {
+    "closing": {
       "section": "Closing",
-      "heading": "How you used AI",
+      "heading": "Your use of AI during this exercise",
       "blocks": [
         {
           "type": "p",
-          "text": "You were welcome to use AI tools throughout this exercise. We are not testing whether you can complete it without them, but we expect the submission to include your own thinking and analysis, and we are interested in how you use them. Please cover these three points:"
+          "text": "You were welcome to use AI tools throughout. We are not testing whether you can complete the exercise without them, but we expect the submission to include your own thinking and analysis, and we are interested in how you use them. Please cover these three points in the box below:"
         },
         {
           "type": "list",
@@ -895,33 +895,13 @@ export const BRIEFS = {
         },
         {
           "type": "note",
+          "title": "Your transcripts, if you used AI",
           "items": [
-            "If you did not use AI at all, say so here and write \"No AI used\" on the next screen."
+            "Attach each conversation you used as a PDF, one per conversation, up to 8 files. This is required if you used AI: we read the transcripts alongside your answers.",
+            "To save a conversation as a PDF: open it in ChatGPT, Claude, Gemini or whichever tool you used, press Ctrl+P (Cmd+P on a Mac), choose \"Save as PDF\" as the destination, and save.",
+            "If your tool offers a share link for the conversation, you can paste the links into the box instead.",
+            "If you did not use AI at all, say so in the box and attach nothing."
           ]
-        }
-      ]
-    },
-    "ai_transcripts": {
-      "section": "Closing",
-      "heading": "Your AI transcripts",
-      "blocks": [
-        {
-          "type": "p",
-          "text": "If you used AI, attach the conversations you used, one PDF per conversation. This is required if you used AI: we read the transcripts alongside your answers."
-        },
-        {
-          "type": "note",
-          "title": "How to save a conversation as a PDF",
-          "items": [
-            "Open the conversation in ChatGPT, Claude, Gemini or whichever tool you used.",
-            "Press Ctrl+P (Cmd+P on a Mac) to open the print dialog.",
-            "Choose \"Save as PDF\" as the printer or destination, then save.",
-            "Repeat for each conversation. You can attach up to 8 files here."
-          ]
-        },
-        {
-          "type": "p",
-          "text": "If your tool offers a share link for the conversation, you can paste the links into the box instead of attaching PDFs. If you did not use AI, write \"No AI used\" in the box."
         }
       ]
     }
@@ -1007,35 +987,18 @@ export const QUESTIONS = [
     {
       "id": "ai_use",
       "section": "s3",
-      "brief": "ai_use",
+      "brief": "closing",
       "type": "rich",
       "require": "text",
-      "prompt": "How did you use AI in this exercise?",
-      "context": "Cover the three points above. A few short paragraphs or bullet points is fine.",
-      "maxLength": 4000
-    },
-    {
-      "id": "ai_transcripts",
-      "section": "s3",
-      "brief": "ai_transcripts",
-      "type": "rich",
-      "require": "either",
+      "attachment": "optional",
       "accept": [
         "pdf"
       ],
       "maxFiles": 8,
-      "prompt": "Your AI transcripts",
-      "context": "Required if you used AI. Attach one PDF per conversation, or paste share links into the box. If you did not use AI, write \"No AI used\". This is the last question: submitting it completes the exercise.",
-      "modes": {
-        "text": {
-          "title": "Paste share links, or state that you did not use AI",
-          "sub": "One link per line. If you used no AI tools at all, write \"No AI used\"."
-        },
-        "file": {
-          "title": "Attach transcript PDFs",
-          "sub": "One PDF per conversation, up to 8 files, each up to 4.5 MB. Save each conversation with Ctrl+P or Cmd+P and choose Save as PDF."
-        }
-      },
+      "prompt": "How did you use AI in this exercise?",
+      "context": "Cover the three points above in the box. A few short paragraphs or bullet points is fine. Then attach your transcripts below. This is the last question: submitting it completes the exercise.",
+      "attachmentPrompt": "Your AI transcripts (required if you used AI)",
+      "attachmentHelp": "One PDF per conversation, up to 8 files, each up to 4.5 MB. Save each conversation with Ctrl+P or Cmd+P and choose Save as PDF. If you did not use AI, attach nothing.",
       "maxLength": 4000,
       "next": null
     }
