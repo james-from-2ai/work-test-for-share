@@ -937,7 +937,8 @@ export const QUESTIONS = [
           "next": "path_c_response"
         }
       ],
-      "maxLength": 24000
+      "maxLength": 24000,
+      "confirm": "I confirm my response answers all four questions (1 to 4), whether typed above or in the PDF I attached, and that it supports the option I selected."
     },
     {
       "id": "path_a_response",
@@ -951,7 +952,8 @@ export const QUESTIONS = [
       "prompt": "Your Stage 2 response",
       "context": "Answer the three items above. Type or paste your response, or attach a PDF.",
       "maxLength": 12000,
-      "next": "ai_use"
+      "next": "ai_use",
+      "confirm": "I confirm my response covers all three items (Questions 1 to 3), whether typed above or in the PDF I attached."
     },
     {
       "id": "path_b_response",
@@ -965,7 +967,8 @@ export const QUESTIONS = [
       "prompt": "Your Stage 2 response",
       "context": "Answer the three items above. Type or paste your response, or attach a PDF.",
       "maxLength": 12000,
-      "next": "ai_use"
+      "next": "ai_use",
+      "confirm": "I confirm my response covers all three items (Questions 1 to 3), whether typed above or in the PDF I attached."
     },
     {
       "id": "path_c_response",
@@ -979,7 +982,8 @@ export const QUESTIONS = [
       "prompt": "Your Stage 2 response",
       "context": "Answer the three items above. Type or paste your response, or attach a PDF.",
       "maxLength": 12000,
-      "next": "ai_use"
+      "next": "ai_use",
+      "confirm": "I confirm my response covers all three items (Questions 1 to 3), whether typed above or in the PDF I attached."
     },
     {
       "id": "ai_use",

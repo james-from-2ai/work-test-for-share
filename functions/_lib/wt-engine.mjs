@@ -524,6 +524,8 @@ function publicQuestion(id, answers, cfg) {
     ...(q.modes && typeof q.modes === 'object' ? { modes: q.modes } : {}),
     // A links field (share links to AI conversations, for instance), labelled by the author.
     ...(linksOf(q) ? { links: linksOf(q) } : {}),
+    // A statement the candidate has to tick before this answer can be locked in.
+    ...(clamp(q.confirm, 300).trim() ? { confirm: clamp(q.confirm, 300).trim() } : {}),
     maxLength: maxLengthOf(q),
     placeholder: q.placeholder || null,
     brief: q.brief ? cfg.briefs[q.brief] || null : null,
@@ -954,6 +956,12 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       // Text and file are checked against one requirement rather than two independent flags,
       // because 'either' is not expressible as a pair of them: neither half is required on its
       // own, but leaving both empty is not an answer.
+      // A question can demand an explicit confirmation ("I have answered all four questions") before
+      // it is locked in. Checked here, not only in the page, so it cannot be skipped by a hand-rolled
+      // request. It comes after the content checks, so the candidate hears about a missing answer
+      // before being asked to confirm one.
+      const needsConfirm = !!clamp(q.confirm, 300).trim();
+
       // Links are optional and never stand in for the answer; they travel with it. A line that is
       // not a web address is refused so a candidate can fix it, rather than quietly dropped.
       let links;
@@ -971,6 +979,7 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       if ((need === 'file' || need === 'both') && !hasFile) return view(rec, now, cfg, { rejected: 'no_file' });
       if ((need === 'text' || need === 'both') && !hasText) return view(rec, now, cfg, { rejected: 'empty' });
       if (need === 'either' && !hasFile && !hasText) return view(rec, now, cfg, { rejected: 'need_one' });
+      if (needsConfirm && body.confirmed !== true) return view(rec, now, cfg, { rejected: 'not_confirmed' });
 
       if (revising) {
         const previous = rec.answers[at];
@@ -980,8 +989,11 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
           ...(choiceIndex === undefined ? {} : { choiceIndex }),
           ...(files.length ? { upload: files[0], uploads: files } : {}),
           ...(choice ? { choice } : {}),
-        ...(links && links.length ? { links } : {}),
           ...(links && links.length ? { links } : {}),
+          ...(needsConfirm ? { confirmed: true } : {}),
+          ...(links && links.length ? { links } : {}),
+        ...(needsConfirm ? { confirmed: true } : {}),
+          ...(needsConfirm ? { confirmed: true } : {}),
           skipped: false,
           revisedAt: now,
           revisions: (previous.revisions || 0) + 1,
@@ -1031,6 +1043,7 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         ...(files.length ? { upload: files[0], uploads: files } : {}),
         ...(choice ? { choice } : {}),
         ...(links && links.length ? { links } : {}),
+        ...(needsConfirm ? { confirmed: true } : {}),
         // Lets the admin page and the CSV know how to read `value` without re-deriving it from
         // the question list, which may have been edited since this answer was written.
         format: rich ? 'rich' : 'text',

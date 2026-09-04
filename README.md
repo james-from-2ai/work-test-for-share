@@ -94,7 +94,9 @@ Then open `/admin.html`, paste the admin key, and issue a link per candidate.
   in one place, with the transcripts attached alongside.
 - **Nothing is a surprise.** The instructions open with three short tiles (time, structure,
   format) and six rules in one panel, the progress bar is a numbered stepper, the button that seals Stage 1
-  says "Lock in and continue to Stage 2", the final confirmation turns red, and the closing screen
+  says "Lock in and continue to Stage 2" and cannot be pressed until the candidate ticks a
+  confirmation that their response covers every question (four in Stage 1, three in Stage 2),
+  enforced on the server as well, the final confirmation turns red, and the closing screen
   greets the candidate by name. A light/dark toggle sits at the top right; without a choice the
   page follows the device setting, and a choice is remembered in that browser only.
 
@@ -184,6 +186,8 @@ A `decision` question is a choice and a formatted write-up on one screen, stored
 `choice`. `optionPrompt` and `responsePrompt` label the two halves. Any `either` question can
 carry `modes` to reword the type-or-attach chooser, and `maxFiles` to take several files. When the
 file part is a section of its own, `attachmentPrompt` and `attachmentHelp` label it. A question can
+carry `confirm: "..."`, a statement the candidate must tick before the answer is accepted (the
+server refuses without `confirmed: true`, and the tick is recorded on the answer). A question can
 also ask for web links with `links: { prompt, help, max, docs: [{ label, url }] }`: one per line,
 each checked to be an http(s) address (a bad line is refused so the candidate can fix it), stored
 with the answer, listed in review, the admin view, the CSV and the Airtable mirror. The `docs` are

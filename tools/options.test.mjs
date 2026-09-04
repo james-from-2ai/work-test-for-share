@@ -863,3 +863,38 @@ test('links are optional and never stand in for a required answer', async () => 
   const review = await handle(store, { action: 'review', token }, T0 + 3000, cfg);
   assert.deepEqual(review.review[0].links, []);
 });
+
+/* ------------------------------------------------------------ confirmation ----------- */
+
+test('a question with a confirmation statement refuses to lock in until it is confirmed', async () => {
+  const store = memStore();
+  const cfg = config({
+    sections: SECTIONS,
+    questions: [{ id: 'w', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], prompt: 'Write-up', confirm: 'I answered all four questions.', next: null }],
+    timing: { mode: 'none' },
+  });
+  const token = await started(store, cfg);
+  const shown = await handle(store, { action: 'state', token }, T0 + 500, cfg);
+  assert.equal(shown.question.confirm, 'I answered all four questions.');
+
+  const blank = await handle(store, { action: 'answer', token, index: 0, questionId: 'w', value: [], confirmed: true }, T0 + 900, cfg);
+  assert.equal(blank.rejected, 'need_one', 'content is checked before the confirmation');
+  const unconfirmed = await handle(store, { action: 'answer', token, index: 0, questionId: 'w', value: rich('done') }, T0 + 1000, cfg);
+  assert.equal(unconfirmed.rejected, 'not_confirmed');
+  const stringy = await handle(store, { action: 'answer', token, index: 0, questionId: 'w', value: rich('done'), confirmed: 'true' }, T0 + 1100, cfg);
+  assert.equal(stringy.rejected, 'not_confirmed', 'only a real boolean true counts');
+  const ok = await handle(store, { action: 'answer', token, index: 0, questionId: 'w', value: rich('done'), confirmed: true }, T0 + 2000, cfg);
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(ok.phase, 'done');
+  const raw = await store.get(`c:${token}`);
+  assert.equal(raw.answers[0].confirmed, true, 'the confirmation is recorded with the answer');
+});
+
+test('a question without a confirmation statement is unaffected', async () => {
+  const store = memStore();
+  const cfg = make({ timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const res = await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 1000, cfg);
+  assert.equal(res.ok, true);
+  assert.equal(res.question.id, 'b');
+});
