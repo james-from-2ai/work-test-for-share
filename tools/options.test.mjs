@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { handle, createCandidates, config, requireOf, attachmentOf } from '../functions/_lib/wt-engine.mjs';
+import { handle, createCandidates, config, requireOf, attachmentOf, introFor } from '../functions/_lib/wt-engine.mjs';
 
 function memStore() {
   const db = new Map();
@@ -281,6 +281,64 @@ test('a question can take a file alongside text without insisting on one', async
  * either had stopped being true.
  */
 const leads = (res) => res.intro.rules.map((r) => r.lead);
+
+/* ------------------------------------------------------------ at a glance ----------- */
+
+test('an untimed test carries the author\'s suggested time on the timing rule and the glance tile', () => {
+  const intro = introFor(make({ timing: { mode: 'none' }, intro: { estimate: 'We suggest about 4 hours.' } }));
+  assert.equal(intro.rules[0].lead, 'There is no time limit.');
+  assert.match(intro.rules[0].text, /We suggest about 4 hours\./);
+  assert.equal(intro.glance[0].label, 'Time');
+  assert.match(intro.glance[0].text, /^Not timed\. We suggest about 4 hours\./);
+});
+
+test('a timed test ignores the estimate: the clock is the estimate', () => {
+  const intro = introFor(make({ durationSec: 3600, intro: { estimate: 'We suggest about 4 hours.' } }));
+  assert.ok(!intro.rules.some((r) => /suggest about 4 hours/.test(r.text)));
+  assert.match(intro.glance[0].text, /^60 minutes on one clock/);
+});
+
+test('structure is the author\'s when given, and written from the parts when not', () => {
+  const own = introFor(make({ intro: { structure: 'Two stages, then a closing question.' } }));
+  assert.equal(own.glance[1].label, 'Structure');
+  assert.equal(own.glance[1].text, 'Two stages, then a closing question.');
+  const generated = introFor(make({}));
+  assert.match(generated.glance[1].text, /^2 parts, one question at a time\. Answers are final once submitted\./);
+  const revisable = introFor(make({ navigation: { back: true, edit: true } }));
+  assert.match(revisable.glance[1].text, /You can go back and change answers\./);
+});
+
+test('the last question of a part names the part it leads into, and nothing else does', async () => {
+  const store = memStore();
+  const cfg = make({
+    questions: [
+      { id: 'pick', section: 'p1', type: 'choice', prompt: 'Pick', options: [{ label: 'A', next: 'a' }, { label: 'B', next: 'b' }] },
+      { id: 'a', section: 'p1', type: 'short', prompt: 'A', next: 'end' },
+      { id: 'b', section: 'p1', type: 'short', prompt: 'B', next: 'end' },
+      { id: 'end', section: 'p2', type: 'short', prompt: 'End', next: null },
+    ],
+  });
+  const token = await started(store, cfg);
+  const first = await handle(store, { action: 'state', token }, T0 + 1000, cfg);
+  assert.equal(first.question.nextPart, null, 'both options stay in Part 1, so no part is named');
+  const second = await handle(store, { action: 'answer', token, index: 0, questionId: 'pick', value: 1 }, T0 + 2000, cfg);
+  assert.equal(second.question.id, 'b');
+  assert.equal(second.question.nextPart, 'Part 2', 'the write-up closes Part 1 and leads into Part 2');
+  const last = await handle(store, { action: 'answer', token, index: 1, questionId: 'b', value: 'x' }, T0 + 3000, cfg);
+  assert.equal(last.question.nextPart, null, 'the final question leads nowhere');
+  assert.equal(last.question.isLast, true);
+});
+
+test('format says what the questions actually accept', () => {
+  const typed = introFor(make({}));
+  assert.equal(typed.glance[2].label, 'Format');
+  assert.equal(typed.glance[2].text, 'Typed answers.');
+  const withPdf = introFor(make({
+    questions: [{ id: 'a', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], prompt: 'A', next: null }],
+  }));
+  assert.match(withPdf.glance[2].text, /attach a PDF \(up to 4\.5 MB\)\. Either is enough\.$/);
+  assert.ok(!/Word/.test(withPdf.glance[2].text), 'a PDF-only question must not promise Word');
+});
 
 test('the instructions describe a single clock when there is one', async () => {
   const store = memStore();

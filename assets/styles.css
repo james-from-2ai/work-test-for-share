@@ -41,8 +41,10 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* About the width of a Google Doc page. The brief is a long read, and a narrow column makes it
+   longer still. */
 .wrap {
-  max-width: 46rem;
+  max-width: 54rem;
   margin: 0 auto;
   padding: 2.5rem 1.25rem 4rem;
 }
@@ -75,8 +77,41 @@ p { margin: 0 0 0.9rem; }
   margin-bottom: 0.5rem;
 }
 
-.rules { margin: 0 0 1.1rem; padding-left: 1.15rem; }
-.rules li { margin-bottom: 0.55rem; }
+/* Each rule is its own small block rather than a bullet in a wall of them, so a candidate can
+   scan the bold leads and read only the ones they need. */
+.rules { margin: 0 0 1.25rem; padding: 0; list-style: none; }
+.rules li {
+  margin-bottom: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  border-left: 3px solid var(--accent);
+  background: var(--bg);
+  border-radius: 0 8px 8px 0;
+  line-height: 1.5;
+}
+.rules li strong { display: block; margin-bottom: 0.15rem; }
+
+/* Time, structure, format: the three things read before anything else. */
+.glance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.7rem;
+  margin: 0 0 1.35rem;
+}
+.glance-tile {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.8rem 0.95rem;
+}
+.glance-k {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+.glance-v { font-size: 0.92rem; line-height: 1.5; }
 
 .bar {
   display: flex;
@@ -119,6 +154,8 @@ p { margin: 0 0 0.9rem; }
 .seg {
   position: relative;
   flex-basis: 0;
+  /* A short closing part still gets room for its label; the shares stay proportional above this. */
+  min-width: 6.5rem;
   height: 1.45rem;
   border-radius: 5px;
   background: var(--line);
@@ -159,9 +196,13 @@ p { margin: 0 0 0.9rem; }
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 1rem 1.1rem 0.6rem;
+  padding: 1.4rem 1.6rem 1rem;
   margin: 0 0 1.5rem;
-  font-size: 0.92rem;
+  font-size: 1rem;
+  line-height: 1.65;
+}
+@media (max-width: 40rem) {
+  .brief { padding: 1rem 1.1rem 0.7rem; }
 }
 .brief-h {
   font-size: 0.72rem;
@@ -173,21 +214,34 @@ p { margin: 0 0 0.9rem; }
 }
 /* pre-line, so a multi-paragraph memo written with blank lines in the builder reads as
    paragraphs rather than collapsing into one block. */
-.brief p { margin: 0 0 0.75rem; white-space: pre-line; }
+.brief p { margin: 0 0 0.85rem; white-space: pre-line; }
+/* Section breaks inside a long packet: a rule above each subheading, so the eye can find the
+   start of the pilot, the model, the options, without reading everything in between. */
 .brief-sub {
-  font-size: 0.95rem;
+  font-size: 1.08rem;
   font-weight: 700;
-  margin: 1.1rem 0 0.45rem;
+  margin: 1.7rem 0 0.6rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--line);
 }
-.brief-sub:first-of-type { margin-top: 0.2rem; }
-.brief ul { margin: 0 0 0.75rem; padding-left: 1.25rem; }
-.brief ul li { margin-bottom: 0.3rem; }
-.brief-table { overflow-x: auto; margin: 0 0 0.85rem; }
-.brief-table table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+.brief-sub:first-of-type { margin-top: 0.2rem; padding-top: 0; border-top: 0; }
+.brief ul { margin: 0 0 0.85rem; padding-left: 1.25rem; }
+.brief ul li { margin-bottom: 0.35rem; }
+
+/* Tables sit in their own bordered panel with a shaded header and alternating rows, so a table
+   of fourteen inputs reads as a table and not as a run of text that happens to line up. */
+.brief-table {
+  overflow-x: auto;
+  margin: 0.4rem 0 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+.brief-table table { border-collapse: collapse; width: 100%; font-size: 0.9rem; line-height: 1.45; }
 .brief-table th, .brief-table td {
   text-align: left;
   vertical-align: top;
-  padding: 0.35rem 0.55rem;
+  padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--line);
 }
 .brief-table th {
@@ -195,7 +249,28 @@ p { margin: 0 0 0.9rem; }
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--muted);
+  background: var(--bg);
 }
+.brief-table tbody tr:nth-child(even) td { background: rgba(127, 127, 127, 0.06); }
+.brief-table tbody tr:last-child td { border-bottom: 0; }
+.brief-table td:first-child { font-weight: 600; }
+
+/* Parallel things as cards: options side by side, questions stacked and numbered by their titles. */
+.cards { display: grid; gap: 0.75rem; margin: 0.4rem 0 1.1rem; }
+.cards.grid { grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+.cards.stack { grid-template-columns: 1fr; }
+.card-item {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.95rem 1.1rem 0.6rem;
+  font-size: 0.95rem;
+}
+.card-item h4 { margin: 0 0 0.5rem; font-size: 0.98rem; line-height: 1.35; }
+.card-item p { margin: 0 0 0.6rem; }
+.card-item ul { margin: 0 0 0.6rem; padding-left: 1.15rem; }
+.card-item ul li { margin-bottom: 0.3rem; }
+.card-item .card-after { color: var(--muted); font-size: 0.9rem; }
 
 .quote {
   margin: 0 0 0.85rem;
@@ -261,6 +336,16 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, label:focus-w
 .opt:hover { border-color: var(--accent); }
 .opt input { margin: 0.25rem 0 0; flex: none; accent-color: var(--accent); }
 .opt.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.opt .opt-sub { display: block; font-size: 0.85rem; color: var(--muted); margin-top: 0.15rem; line-height: 1.45; }
+
+/* "Type it, or attach it": the two ways of answering an either/or question, side by side. */
+.mode-choice { margin: 0 0 1rem; }
+.mode-choice .lbl { margin-top: 0; margin-bottom: 0.45rem; }
+.opts.two { grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+.mode-text[hidden], .mode-file[hidden] { display: none; }
+
+/* The final confirmation is the one click with nothing after it. */
+button.primary.danger { background: var(--danger); }
 
 .counter { font-size: 0.78rem; color: var(--muted); text-align: right; margin: 0.3rem 0 0; }
 .counter.over { color: var(--danger); font-weight: 600; }

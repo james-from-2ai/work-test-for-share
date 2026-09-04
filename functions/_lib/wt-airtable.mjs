@@ -77,7 +77,13 @@ export function airtableStore({ token, baseId, tableId, fileField = 'Files', fet
     const answers = Array.isArray(value.answers) ? value.answers : [];
     const readable = answers.map((a) => {
       const text = richText(a.value);
-      return `Q${(a.index ?? 0) + 1}. ${a.prompt || ''}\n${text || '(blank)'}`;
+      // A file-only answer is not blank: say which attachment in the Files column it is, so a
+      // reviewer scanning this column knows to open the file rather than assume nothing came in.
+      const file = a.upload && a.upload.filename
+        ? `File submitted: ${a.upload.filename}${a.upload.size ? ` (${Math.max(1, Math.round(a.upload.size / 1024))} KB)` : ''}, in the Files column as ${a.id}--${a.upload.filename}`
+        : '';
+      const body = [text, file].filter(Boolean).join('\n');
+      return `Q${(a.index ?? 0) + 1}. ${a.prompt || ''}\n${body || (a.skipped ? '(not reached)' : '(blank)')}`;
     }).join('\n\n');
 
     return {

@@ -142,7 +142,10 @@ function loadDraft(qid) {
 
 function clearDraft(qid) {
   clearTimeout(draftTimer);
-  try { localStorage.removeItem(draftKey(qid)); } catch { /* nothing to clear */ }
+  try {
+    localStorage.removeItem(draftKey(qid));
+    localStorage.removeItem(`${draftKey(qid)}:mode`);
+  } catch { /* nothing to clear */ }
 }
 
 /** Once the test is over there is nothing a draft could be restored into. */
@@ -158,6 +161,9 @@ function clearAllDrafts() {
 
 function screen(id) {
   app.replaceChildren($(`#tpl-${id}`).content.cloneNode(true));
+  // A new screen starts at the top. Without this, submitting a long question leaves the next one
+  // scrolled to wherever the button was, which on a brief this size is a long way from the start.
+  window.scrollTo(0, 0);
   return app;
 }
 
@@ -336,6 +342,26 @@ function renderIntro(intro) {
     hook('blurb').hidden = false;
   }
 
+  // Three tiles: time, structure, format. Written by the server from the settings, so they say
+  // the same thing as the rules underneath, only faster.
+  const glance = hook('glance');
+  if (glance && Array.isArray(intro.glance) && intro.glance.length) {
+    glance.replaceChildren();
+    for (const g of intro.glance) {
+      const tile = document.createElement('div');
+      tile.className = 'glance-tile';
+      const k = document.createElement('div');
+      k.className = 'glance-k';
+      k.textContent = g.label;
+      const v = document.createElement('div');
+      v.className = 'glance-v';
+      v.textContent = g.text;
+      tile.append(k, v);
+      glance.append(tile);
+    }
+    glance.hidden = false;
+  }
+
   const list = hook('rules');
   list.replaceChildren();
   for (const rule of intro.rules || []) {
@@ -416,6 +442,9 @@ function renderInstructions(state) {
 
 /* -------------------------------------------------------------------- progress ------- */
 
+/** "How you used AI" mid-sentence is "how you used AI", not "how you used ai". */
+const lowerFirst = (t) => (t ? t.charAt(0).toLowerCase() + t.slice(1) : '');
+
 /** How many questions a part holds, or an honest refusal when the branch decides. */
 function countOf(s) {
   if (s.total == null) return 'a number of questions that depends on your answers';
@@ -465,7 +494,7 @@ function renderProgress(state, { preview = false } = {}) {
       : mode === 'section' ? 'Each part is timed separately, and running one out moves you on to the next.'
       : 'Those timings are a suggestion, not a rule; the only hard limit is the total.';
     note.textContent = live
-      .map((s) => `${s.label}, ${s.summary.toLowerCase()}: ${countOf(s)}, ${minutesOf(s)} (${s.share}% of the work)`)
+      .map((s) => `${s.label}, ${lowerFirst(s.summary)}: ${countOf(s)}, ${minutesOf(s)} (${s.share}% of the work)`)
       .join('. ') + `. ${tail}`;
     return;
   }
@@ -484,7 +513,7 @@ function renderProgress(state, { preview = false } = {}) {
     parts.push(`${here.label} of ${progress.sectionTotal}: ${here.summary}. ${where}, and ${budget}.`);
   }
   parts.push(rest.length
-    ? `Still to come: ${rest.map((s) => `${s.label} (${s.summary.toLowerCase()}, ${minutesOf(s)})`).join(', ')}.`
+    ? `Still to come: ${rest.map((s) => `${s.label} (${lowerFirst(s.summary)}, ${minutesOf(s)})`).join(', ')}.`
     : 'This is the last part.');
   note.textContent = parts.join(' ');
 }
@@ -522,6 +551,43 @@ function renderBrief(brief) {
         ul.append(li);
       }
       panel.append(ul);
+    } else if (block.type === 'cards') {
+      // A set of parallel things: the options a candidate chooses between (side by side) or the
+      // numbered questions they answer (stacked). Each card is title, text, bullet points, and an
+      // optional closing line, all as text nodes.
+      const grid = document.createElement('div');
+      grid.className = `cards ${block.layout === 'stack' ? 'stack' : 'grid'}`;
+      for (const item of block.items || []) {
+        const card = document.createElement('div');
+        card.className = 'card-item';
+        if (item.title) {
+          const h = document.createElement('h4');
+          h.textContent = item.title;
+          card.append(h);
+        }
+        if (item.text) {
+          const p = document.createElement('p');
+          p.textContent = item.text;
+          card.append(p);
+        }
+        if (Array.isArray(item.points) && item.points.length) {
+          const ul = document.createElement('ul');
+          for (const pt of item.points) {
+            const li = document.createElement('li');
+            li.textContent = pt;
+            ul.append(li);
+          }
+          card.append(ul);
+        }
+        if (item.after) {
+          const p = document.createElement('p');
+          p.className = 'card-after';
+          p.textContent = item.after;
+          card.append(p);
+        }
+        grid.append(card);
+      }
+      panel.append(grid);
     } else if (block.type === 'table') {
       // Data tables, built cell by cell from text nodes. Nothing an author writes becomes markup,
       // same as every other block; a table is just the one shape a bullet list cannot carry.
@@ -977,14 +1043,19 @@ function renderQuestion(state) {
 
   const field = hook('field');
   const next = hook('next');
+  // When this answer closes a part, the button says where it goes, so "Lock in" is not a leap in
+  // the dark: the candidate knows Stage 1 is about to be sealed and Stage 2 is next.
   const nextLabel = past
     ? (canEdit ? 'Save this change' : 'Back to where I was')
-    : q.isLast ? 'Submit final answer' : 'Lock in and continue';
+    : q.isLast ? 'Submit final answer'
+    : q.nextPart ? `Lock in and continue to ${q.nextPart}`
+    : 'Lock in and continue';
   next.textContent = nextLabel;
 
   // The footer used to state "Answers are final once you continue" whatever the test allowed.
   hook('finality').textContent = past ? ''
     : canRevise ? 'You can come back and change this later.'
+    : q.nextPart && herePart ? `This is the last question in ${herePart.label}. Answers are final once you continue.`
     : 'Answers are final once you continue.';
 
   // Secondary actions, left of the primary button: review, and where allowed, Previous / Next.
@@ -1010,6 +1081,7 @@ function renderQuestion(state) {
   // owns the decision so neither can re-enable it while the other still has grounds not to.
   let over = false;
   let attachment = null;
+  let focusEditor = null;
   const refreshNext = () => { next.disabled = over || (attachment ? attachment.busy() : false); };
 
   // Drafts are for the question being answered, never for one being looked back at: there the
@@ -1017,6 +1089,15 @@ function renderQuestion(state) {
   const draftFor = (value) => { if (!past) queueDraft(q.id, value); };
 
   let read; // returns what we send as `value`
+
+  // On an either/or question the two ways of answering live in their own containers, so a chooser
+  // can show one at a time. Elsewhere these are just the field.
+  const textWrap = document.createElement('div');
+  textWrap.className = 'mode-text';
+  const fileWrap = document.createElement('div');
+  fileWrap.className = 'mode-file';
+  let mode = null; // 'text' | 'file' | null, only meaningful when a chooser is shown
+  let hadDraft = false;
 
   if (q.type === 'rich') {
     const counter = document.createElement('p');
@@ -1036,16 +1117,22 @@ function renderQuestion(state) {
       refreshNext();
       draftFor(blocks);
     };
-    const ed = richEditor(q, field, paint);
-    field.append(counter);
+    const ed = richEditor(q, textWrap, paint);
+    textWrap.append(counter);
+    field.append(textWrap);
     const draft = past ? null : loadDraft(q.id);
     if (draft && !isBlank(draft)) {
       renderStoredAnswer(ed.editor, draft, { blank: null });
-      noteRestored(field);
+      noteRestored(textWrap);
+      hadDraft = true;
     }
     paint();
-    read = ed.read;
-    if (!past) ed.editor.focus();
+    // In file mode nothing typed is submitted, which is what makes "either" mean one or the other.
+    read = () => (mode === 'file' ? [] : ed.read());
+    focusEditor = () => ed.editor.focus();
+    // preventScroll: the cursor goes in the box, but the page stays at the top of the brief.
+    // Focusing normally would scroll straight past everything the candidate is meant to read.
+    if (!past) ed.editor.focus({ preventScroll: true });
   } else if (q.type === 'choice') {
     const list = document.createElement('div');
     list.className = 'opts';
@@ -1111,13 +1198,83 @@ function renderQuestion(state) {
     input.addEventListener('input', () => { paint(); draftFor(input.value); });
     field.append(counter);
     guardPaste(input);
-    if (!past) input.focus();
+    if (!past) input.focus({ preventScroll: true });
     read = () => input.value.trim();
   }
 
-  if (q.attachment && q.attachment !== 'none') attachment = attachmentField(q, state, field, refreshNext);
+  if (q.attachment && q.attachment !== 'none') {
+    attachment = attachmentField(q, state, fileWrap, refreshNext);
+    field.append(fileWrap);
+  }
 
-  const note = requirementNote(q);
+  /**
+   * Either/or, made literal. Rather than an editor and a file input side by side with a note saying
+   * one is enough, the candidate first says how they want to respond, and only that input appears.
+   * The choice is remembered per question so a reload lands them back where they were, and a file
+   * already uploaded, or a draft already typed, decides it for them.
+   */
+  const chooser = q.require === 'either' && q.type === 'rich' && !past;
+  if (chooser) {
+    const box = document.createElement('div');
+    box.className = 'mode-choice';
+    const legend = document.createElement('p');
+    legend.className = 'lbl';
+    legend.textContent = 'How would you like to respond? Choose one.';
+    const opts = document.createElement('div');
+    opts.className = 'opts two';
+    const radios = {};
+    const option = (value, title, sub) => {
+      const label = document.createElement('label');
+      label.className = 'opt';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'mode';
+      input.value = value;
+      const text = document.createElement('span');
+      const strong = document.createElement('strong');
+      strong.textContent = title;
+      const small = document.createElement('span');
+      small.className = 'opt-sub';
+      small.textContent = sub;
+      text.append(strong, small);
+      label.append(input, text);
+      input.addEventListener('change', () => apply(value, true));
+      radios[value] = { input, label };
+      opts.append(label);
+    };
+    const allowed = Array.isArray(q.accept) && q.accept.length === 1 && q.accept[0] === 'pdf' ? 'a PDF' : 'a PDF or Word document';
+    option('text', 'Type or paste it here',
+      'We recommend drafting in Word or Google Docs and pasting it in, so you keep your own copy. Headings, bold and lists survive the paste.');
+    option('file', `Attach ${allowed}`,
+      `From Word or Google Docs: File, then Save As or Download, and choose PDF. Up to ${q.maxBytes ? (q.maxBytes / 1_000_000).toFixed(1) : '4.5'} MB.`);
+    box.append(legend, opts);
+    field.insertBefore(box, textWrap);
+
+    const modeKey = `${draftKey(q.id)}:mode`;
+    const apply = (m, chosen) => {
+      mode = m;
+      textWrap.hidden = m !== 'text';
+      fileWrap.hidden = m !== 'file';
+      for (const [v, r] of Object.entries(radios)) {
+        r.input.checked = v === m;
+        r.label.classList.toggle('sel', v === m);
+      }
+      try { if (m) localStorage.setItem(modeKey, m); } catch { /* fine */ }
+      if (chosen && m === 'text' && focusEditor) focusEditor();
+      showError('');
+      refreshNext();
+    };
+    let initial = null;
+    if (state.upload) initial = 'file';
+    else if (hadDraft) initial = 'text';
+    else {
+      try { initial = localStorage.getItem(modeKey); } catch { /* fine */ }
+      if (initial !== 'text' && initial !== 'file') initial = null;
+    }
+    apply(initial, false);
+  }
+
+  const note = chooser ? null : requirementNote(q);
   if (note) {
     const p2 = document.createElement('p');
     p2.className = 'muted small';
@@ -1131,7 +1288,9 @@ function renderQuestion(state) {
    * The server re-checks all of this; this exists so the candidate hears why before the round trip.
    */
   const requirementCheck = () => {
-    const hasFile = attachment ? attachment.has() : false;
+    // With a chooser shown, only the chosen half counts: a file attached earlier does not stand in
+    // for a typed answer once they have said they are typing, and vice versa.
+    const hasFile = attachment && mode !== 'text' ? attachment.has() : false;
     const hasText = !isBlank(read());
     const blankMsg = q.type === 'choice' ? 'Choose one option to continue.'
       : canRevise ? 'Write something to continue.'
@@ -1139,7 +1298,11 @@ function renderQuestion(state) {
     switch (q.require) {
       case 'file': return hasFile ? null : REJECTIONS.no_file;
       case 'both': return !hasFile ? REJECTIONS.no_file : !hasText ? 'Add a short written answer as well.' : null;
-      case 'either': return hasFile || hasText ? null : REJECTIONS.need_one;
+      case 'either':
+        if (chooser && mode === null) return 'Choose how you want to respond first: type it here, or attach a file.';
+        if (chooser && mode === 'file') return hasFile ? null : REJECTIONS.no_file;
+        if (chooser && mode === 'text') return hasText ? null : blankMsg;
+        return hasFile || hasText ? null : REJECTIONS.need_one;
       case 'optional': return null;
       default: return hasText ? null : blankMsg;
     }
@@ -1153,11 +1316,14 @@ function renderQuestion(state) {
   let armed = false;
   const disarm = () => {
     armed = false;
+    next.classList.remove('danger');
     const box = $('.confirm-final', app);
     if (box) box.remove();
   };
   const arm = () => {
     armed = true;
+    // Red, because this is the one click with nothing after it.
+    next.classList.add('danger');
     next.textContent = 'Yes, submit everything';
     const box = document.createElement('div');
     box.className = 'confirm-final';

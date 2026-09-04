@@ -2,9 +2,9 @@
 
 The take-home exercise for the **Executive Vice President, Evidence** role at Evidence Action,
 "MMS Nigeria: The Expansion Gate", served as a hosted, two-stage work test. Candidates open a
-link, read the Stage 1 packet, submit their response (written or as a PDF or Word document),
-select the option they recommend, and are routed to one of three Stage 2 paths. Stage 2 is not
-visible until Stage 1 is submitted, and Stage 1 cannot be changed afterwards.
+link, read the Stage 1 case, select the option they recommend, submit their write-up (typed or as
+a PDF), and are routed to one of three Stage 2 paths, then a closing question on AI use. Stage 2
+is not visible until Stage 1 is submitted, and Stage 1 cannot be changed afterwards.
 
 The test is at `/`, the results board at `/admin.html`, and the authoring tool at `/builder.html`.
 
@@ -64,7 +64,8 @@ Then open `/admin.html`, paste the admin key, and issue a link per candidate.
 - **Only a candidate's first submission counts**, keyed on their email. Deleting a candidate's
   row (Reset on the admin page, or delete the Airtable row) is how you grant a retake.
 - **Files** land in the `Files` attachment column of the candidate's Airtable row, named with the
-  question id. Download them rather than previewing: they came from outside.
+  question id. The readable `Answers` column says "File submitted: name" for a file-only answer.
+  Download them rather than previewing: they came from outside.
 - **CSV** from the admin page carries every answer, the route taken, time on each question, and
   file names and sizes.
 
@@ -74,17 +75,23 @@ Then open `/admin.html`, paste the admin key, and issue a link per candidate.
   hours across both stages (2 to 3 for Stage 1, 60 to 90 minutes for Stage 2). The progress bar
   shows those estimates; nothing counts down and nothing expires. Submitted answers are saved on
   the server, so a candidate can close the page and return to the same link.
-- **Gated and branching.** Stage 1 is one response (text or file), an optional attachment of AI
-  prompts or transcripts, and the choice of Option 1, 2 or 3. That choice routes to Path A, B or
-  C for Stage 2, which is one response plus an optional AI attachment. A candidate never sees the
-  destination of an option before choosing it.
+- **Gated and branching.** Stage 1 opens with the whole case and the choice of Option 1, 2 or 3,
+  then the write-up. The choice routes to one of three copies of the write-up question (identical
+  wording, each naming the option chosen) and from there to Path A, B or C for Stage 2. After
+  Stage 2 comes one closing question on how the candidate used AI, with an optional attachment
+  for prompts or transcripts. A candidate never sees the destination of an option before choosing it.
 - **Look back, not change.** Candidates can re-read their Stage 1 submission while working on
   Stage 2, since the memo they are answering refers to it. They cannot edit it.
-- **Text or file.** Every response question accepts either a written answer or a PDF or Word
-  document, up to 4.5 MB. A PDF is verified byte by byte; a `.docx` only as far as "a zip named
-  .docx". Google Docs have to be downloaded as PDF or Word first, and the instructions say so.
-- **AI use is allowed** and a disclosure paragraph is required at the end of each response,
-  exactly as the source document asks.
+- **Type it or attach it.** Each write-up question first asks how the candidate wants to respond,
+  then shows only that input: the formatting editor, or a PDF upload (up to 4.5 MB, verified byte
+  by byte). Word and Google Docs users are told to save as PDF, and everyone is advised to draft
+  in a word processor so they keep their own copy. Word documents are not accepted on this test.
+- **AI use is allowed.** The disclosure the source document asks for is a single closing question
+  after both stages rather than a paragraph at the end of each response, so a reviewer finds it
+  in one place.
+- **Nothing is a surprise.** The instructions open with three tiles (time, structure, format), the
+  button that seals Stage 1 says "Lock in and continue to Stage 2", and the final confirmation
+  turns red.
 
 ## Changing the test
 
@@ -107,10 +114,10 @@ every request, so changing which question follows which can move where a sitting
 next answer lands. Wording changes are safe.
 
 Two things to know about text lengths. Rich answers are capped per question (24,000 characters
-for the Stage 1 response, 12,000 for Stage 2, 6,000 for each AI attachment question), and a
+for the Stage 1 write-up, 12,000 for Stage 2, 4,000 for the closing AI question), and a
 candidate's whole session has to fit in one Airtable long-text cell, so a very long typed response
 is refused with a message rather than silently truncated. The instructions steer long or
-table-heavy responses towards attaching a file, which has no such limit below 4.5 MB.
+table-heavy responses towards attaching a PDF, which has no such limit below 4.5 MB.
 
 ## What a test can be set to do
 
@@ -153,10 +160,15 @@ minutes, and the reference briefs. Four panels sit alongside the editor:
 - **Spec file**, which is what you download.
 
 Briefs are the reference material that stays on screen for every question in a part. Block types:
-paragraph, subheading, bullet list, table (a header row plus data rows), quoted message (a memo,
-Slack or email, with a label and optional numbered points), and a link button out to data. Blank
-lines inside a paragraph or a quoted message render as paragraph breaks, which is how the Stage 2
-memos are written.
+paragraph, subheading, bullet list, table (a header row plus data rows), cards (parallel items
+with a title, text, points and a closing line, side by side for options or stacked for numbered
+questions), quoted message (a memo, Slack or email, with a label and optional numbered points),
+and a link button out to data. Blank lines inside a paragraph or a quoted message render as
+paragraph breaks, which is how the Stage 2 memos are written.
+
+The instructions page also carries three "at a glance" tiles. Time and format are written from
+the settings; the builder's "Suggested time" and "Structure" fields fill in what only an author
+knows, and the suggested time is only shown on an untimed test.
 
 Two things the candidate page does on its own. It keeps a draft of whatever is being typed in the
 browser and restores it if the page is closed or crashes before the answer is submitted; nothing
@@ -179,8 +191,9 @@ jumps, `next: null` ends the test, and each option on a multiple choice can carr
 ## File uploads
 
 A question with `require` set to `file`, `either` or `both` takes one PDF or Word document, up to
-4.5 MB. For a second attachment, add a second question, which is what the AI documentation
-questions are.
+4.5 MB (the EVP test restricts every upload to PDF with `accept: ["pdf"]`). For a second
+attachment, add a second question. On an `either` question the candidate picks "type" or "attach"
+first and only the chosen half counts.
 
 The file is stored the moment it is chosen, not when the answer is submitted.
 

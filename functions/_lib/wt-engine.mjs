@@ -38,7 +38,7 @@ import {
 } from './wt-questions.mjs';
 import { sanitizeRich, richIsEmpty, richToText, richWordCount } from './wt-rich.mjs';
 import {
-  currentQuestionId, questionById, firstQuestionId, optionLabels, nextIdAfter,
+  currentQuestionId, questionById, firstQuestionId, optionLabels, nextIdAfter, outgoingIds,
   remainingRange, sectionOutlook,
 } from './wt-flow.mjs';
 import { checkUpload, acceptAttribute, describeAllowed, MAX_UPLOAD_BYTES } from './wt-files.mjs';
@@ -135,10 +135,16 @@ export function introFor(cfg) {
   const rules = [];
   const t = cfg.timing;
 
+  // An author's suggested duration for an untimed test ("about 4 hours"). It rides on the engine's
+  // own timing rule so the two never sit apart, and it is only used when nothing is enforced: on a
+  // timed test the clock is the estimate.
+  const estimate = clamp(cfg.intro.estimate, 300).trim();
+
   if (t.mode === 'none') {
     rules.push({
       lead: 'There is no time limit.',
-      text: 'Take the time you need. Nothing expires while you are working and there is no countdown.',
+      text: 'This exercise is not timed. Nothing expires while you are working and there is no countdown.'
+        + (estimate ? ` ${estimate}` : ' Take the time you need.'),
     });
   } else if (t.mode === 'section') {
     rules.push({
@@ -224,8 +230,32 @@ export function introFor(cfg) {
     if (lead || text) rules.push({ lead, text });
   }
 
+  // The three answers a candidate scans for before reading anything else: how long, what shape,
+  // what format. Time and format are derived from what the engine enforces, the same as the rules
+  // above. Structure is the one an author knows better than the code does (what the parts are for,
+  // what locks when), so an author's text wins there, with a generated fallback.
+  const parts = cfg.sections.length;
+  const time = t.mode === 'none'
+    ? `Not timed. ${estimate || 'Take the time you need.'}`
+    : t.mode === 'section'
+      ? 'Each part has its own clock. When one runs out you move on to the next part.'
+      : `${Math.round(t.totalSec / 60)} minutes on one clock, which starts when you begin and does not stop.`;
+  const structure = clamp(cfg.intro.structure, 400).trim()
+    || `${parts > 1 ? `${parts} parts, one question at a time.` : 'One question at a time.'} `
+      + (cfg.navigation.edit ? 'You can go back and change answers.' : 'Answers are final once submitted.');
+  const format = withFiles.length
+    ? `Type your answer in the box, or attach a ${describeAllowed([...new Set(withFiles.flatMap((q) => acceptOf(q)))])} `
+      + `(up to ${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB)${withFiles.some((q) => requireOf(q) === 'either') ? '. Either is enough.' : '.'}`
+    : `Typed answers${cfg.integrity.blockPaste ? ', no pasting' : ''}.`;
+  const glance = [
+    { label: 'Time', text: time },
+    { label: 'Structure', text: structure },
+    { label: 'Format', text: format },
+  ];
+
   return {
     blurb: clamp(cfg.intro.blurb, 800).trim() || null,
+    glance,
     rules,
     sections: (Array.isArray(cfg.intro.sections) ? cfg.intro.sections : [])
       .map((s) => ({ heading: clamp(s && s.heading, 120).trim(), text: clamp(s && s.text, 2000).trim() }))
@@ -371,6 +401,18 @@ const pasteBlockedFor = (q, cfg) => (typeof q.blockPaste === 'boolean' ? q.block
 /** Which part a question belongs to, defaulting to the first. */
 const sectionIdOf = (q, cfg) => (q && q.section) || cfg.sections[0].id;
 
+/** The label of the part every route out of `q` leads into, if that is one part and not this one. */
+function nextPartOf(q, cfg) {
+  const ids = outgoingIds(q, cfg.questions);
+  if (!ids.length || ids.some((id) => !id)) return null;
+  const parts = new Set(ids.map((id) => sectionIdOf(questionById(id, cfg.questions), cfg)));
+  if (parts.size !== 1) return null;
+  const [partId] = parts;
+  if (partId === sectionIdOf(q, cfg)) return null;
+  const section = cfg.sections.find((s) => s.id === partId);
+  return section ? section.label : null;
+}
+
 /** Tokens are opaque and unguessable; the token IS the candidate's authentication. */
 export function newToken() {
   const bytes = new Uint8Array(16);
@@ -416,6 +458,11 @@ function publicQuestion(id, answers, cfg) {
     // thing a progress indicator exists to prevent.
     total: ahead.certain ? answered + ahead.max : null,
     isLast: ahead.max <= 1,
+    // The part this answer leads into, when every route out of here agrees and it is a different
+    // part. The page uses it to say "continue to Stage 2" on the button that seals Stage 1, so a
+    // candidate is never surprised by which click closed a part. A choice whose options lead to
+    // different parts, or one that ends the test, gives nothing rather than a guess.
+    nextPart: nextPartOf(q, cfg),
     type: q.type,
     prompt: q.prompt,
     context: q.context || null,

@@ -1,5 +1,5 @@
 {
-  "notes": "Evidence Action, Executive Vice President, Evidence: take-home exercise, 'MMS Nigeria: The Expansion Gate'. Content is taken from the Google Doc 'Setting and Stage 1 / Stage 2 (3 paths)' (Drive id 1P7j-s_vk9cHkHw4eC1DBDs9ZYVmGUSf2ccffkA2r9Fk) as of 2026-09-04, with the wording kept close to the source on purpose. Three deliberate departures from the doc: the Google Form submission is replaced by the response question plus the option choice at the end of Stage 1, which is what routes the candidate to Path A, B or C; the estimated times are shown but nothing is timed, because the doc says 'please use the time you need'; and candidates can re-read their Stage 1 submission while working on Stage 2 but cannot change it. The scenario is fictionalized by Evidence Action and the doc says so to the candidate.",
+  "notes": "Evidence Action, Executive Vice President, Evidence: take-home exercise, 'MMS Nigeria: The Expansion Gate'. Content is taken from the Google Doc 'Setting and Stage 1 / Stage 2 (3 paths)' (Drive id 1P7j-s_vk9cHkHw4eC1DBDs9ZYVmGUSf2ccffkA2r9Fk) as of 2026-09-04, with the wording kept close to the source on purpose. Deliberate departures from the doc, all agreed with James Bedford: the Google Form submission is replaced by the response question plus the option choice at the end of Stage 1, which routes the candidate to Path A, B or C; nothing is timed, because the doc says 'please use the time you need', and the suggested times are shown instead; candidates can re-read their Stage 1 submission while working on Stage 2 but cannot change it; responses are typed or attached as PDF only (Word and Google Docs users are told to save as PDF); and the AI use disclosure is one closing question after both stages rather than a paragraph at the end of each response. The scenario is fictionalized by Evidence Action and the doc says so to the candidate.",
   "durationSec": 14400,
   "graceSec": 5,
   "timing": {
@@ -13,22 +13,24 @@
     "blockPaste": false
   },
   "intro": {
+    "estimate": "We suggest about 4 hours in total: 2 to 3 hours for Stage 1 and 1 to 1.5 hours for Stage 2.",
+    "structure": "Two stages, then one closing question about your use of AI. In Stage 1 you read the case, select the option you recommend, then submit your write-up. You must submit Stage 1 before you can see Stage 2, and once submitted it cannot be changed.",
     "rules": [
       {
-        "lead": "Stage 1 must be submitted before Stage 2 is shown.",
-        "text": "At the end of Stage 1 you will select the option you recommend, and that selection decides which Stage 2 you receive. You will not be able to change your Stage 1 submission after that, so make sure your selection matches your written response."
+        "lead": "Two stages, in order.",
+        "text": "Stage 1 is the case. You read it, select the option you recommend, then submit your written response. Your selection decides which Stage 2 you receive. Once Stage 1 is submitted you will not be able to change it, so make sure your write-up supports the option you selected."
       },
       {
-        "lead": "Use any format you prefer.",
-        "text": "Each stage's response can be written here or attached as a PDF or Word document. If you work in a Google Doc, download it as PDF or Word (File, then Download) before attaching it. Anything typed but not yet submitted is kept only in this browser, so submit before you switch devices."
+        "lead": "Submit as a PDF or as text.",
+        "text": "For each stage you choose one of two ways to respond: paste or type your answer into the text box, or attach a PDF. We recommend drafting in Word or Google Docs either way, so you keep your own copy. To make a PDF, go to File, then Save As or Download, and choose PDF. Anything typed but not yet submitted is kept only in this browser, so submit before you switch devices."
       },
       {
-        "lead": "Estimated time: about 4 hours across both stages.",
-        "text": "Stage 1 is designed for 2 to 3 hours and Stage 2 for 60 to 90 minutes. We are not testing how quickly you work; please use the time you need. Submitted responses are saved on our server, so you can close this page and return to the same link later."
+        "lead": "You can come back to the same link.",
+        "text": "Submitted responses are saved on our server. Close this page whenever you like and reopen the same link to continue where you left off."
       },
       {
         "lead": "You may use AI tools.",
-        "text": "We are not testing whether you can complete this exercise without them, but we expect your submission to include your own thinking and analysis, and we are interested in how you use them. End each stage's response with a disclosure paragraph: what you used and for which parts, what it got wrong or where you disagreed with it, and what you checked independently. If you used AI, you will also be able to attach the prompts you used or transcripts from your AI use."
+        "text": "We are not testing whether you can complete this exercise without them, but we expect your submission to include your own thinking and analysis, and we are interested in how you use them. After Stage 2 there is one closing question about how you used AI across the whole exercise, so you do not need to write a disclosure inside your responses."
       }
     ],
     "sections": [
@@ -54,6 +56,12 @@
       "label": "Stage 2",
       "summary": "Response to the program",
       "recommendedMin": 75
+    },
+    {
+      "id": "s3",
+      "label": "Closing",
+      "summary": "How you used AI",
+      "recommendedMin": 5
     }
   ],
   "briefs": {
@@ -71,15 +79,15 @@
         },
         {
           "type": "p",
-          "text": "Estimated time: 2 to 3 hours for Stage 1. The full exercise across both stages is designed for approximately 4 hours. We are not testing how quickly you work; please use the time you need."
+          "text": "This exercise is not timed. We suggest about 4 hours in total: 2 to 3 hours for Stage 1 and 1 to 1.5 hours for Stage 2. We are not testing how quickly you work; please use the time you need."
         },
         {
           "type": "p",
-          "text": "Format: use any format you prefer. Write your response in the box at the end of this page, or attach it as a PDF or Word document. After you submit it you will be asked to select your recommended option, and you will then receive the Stage 2 materials. You will not be able to change your Stage 1 submission after that."
+          "text": "Format: below this case you will first be asked to select the option you recommend, and then to submit your written response, either pasted into the text box or attached as a PDF (from Word or Google Docs: File, then Save As or Download, and choose PDF). Once both are submitted you will receive the Stage 2 materials, and Stage 1 cannot be changed after that."
         },
         {
           "type": "p",
-          "text": "AI use: you may use AI tools. We require a disclosure at the end of your response describing what tools you used and how. See the questions below."
+          "text": "AI use: you may use AI tools. After Stage 2 there is one closing question about how you used them across the whole exercise, so you do not need to include a disclosure in this response."
         },
         {
           "type": "h",
@@ -545,138 +553,93 @@
           "text": "No option involves withdrawing from where we operated the pilot. The choice is what we do beyond that. You must provide your recommendation based on what the evidence supports; expertise in local politics and donor willingness is not required. You must select only one, name an interval before you would expect another gating decision, and define your learning agenda for that period."
         },
         {
-          "type": "p",
-          "text": "Option 1: Hold at the pilot footprint with a learning agenda, do not scale. Use the period to strengthen what we know about the delivery model before committing further."
-        },
-        {
-          "type": "list",
+          "type": "cards",
+          "layout": "grid",
           "items": [
-            "90 facilities, 52,000 women per year",
-            "$292 per DALY averted, $7.43 per woman initiated",
-            "Existing funding covers this footprint"
+            {
+              "title": "Option 1: Hold at the pilot footprint with a learning agenda, do not scale",
+              "text": "Use the period to strengthen what we know about the delivery model before committing further.",
+              "points": [
+                "90 facilities, 52,000 women per year",
+                "$292 per DALY averted, $7.43 per woman initiated",
+                "Existing funding covers this footprint"
+              ],
+              "after": "Government momentum, pregnant women attending other ANCs, and donor interest on hold while we wait to learn more."
+            },
+            {
+              "title": "Option 2: Expand footprint within Nigeria",
+              "text": "Full scale-up in existing states of operation plus a new third state: FCT, Oyo, Jigawa. Totals for the full three-state footprint:",
+              "points": [
+                "1,449 facilities, 1,985,558 women over three years",
+                "$255 per DALY averted, $5.21 per woman initiated",
+                "Requires new fundraising, not currently committed"
+              ],
+              "after": "Cost-effectiveness improves because many programmatic costs are largely fixed and spread across a larger population. The model applies a 20% benefit reduction to Jigawa to reflect poorer care-seeking behavior relative to the pilot states. The Federal Ministry has expressed strong interest in a multi-state footprint, and MMS is already in national guidelines."
+            },
+            {
+              "title": "Option 3: Maintain funded Nigeria footprint and expand into New Country",
+              "text": "Maintain existing footprint within FCT and Oyo, and open a first program in New Country.",
+              "points": [
+                "Approximately 1.1 million women in New Country over three years",
+                "Estimated $185 per DALY averted in New Country, $6.90 per woman initiated",
+                "A donor has offered to fully fund three years in New Country. The commitment is restricted to that geography."
+              ],
+              "after": "New Country carries a substantially higher burden, driving better cost-effectiveness: low birth weight prevalence of 13% against Nigeria's 7%, anemia prevalence in pregnancy of 68% against 56%, and higher neonatal mortality. The New Country estimate applies the consumption distribution observed in the Nigeria pilot and the same 75% initiation assumption. Delivery costs are estimated by using Nigeria actual costs as a proxy. ANC attendance in New Country is later and less frequent than in Nigeria. MMS is not yet in New Country's national treatment guidelines."
+            }
           ]
-        },
-        {
-          "type": "p",
-          "text": "Government momentum, pregnant women attending other ANCs, and donor interest on hold while we wait to learn more."
-        },
-        {
-          "type": "p",
-          "text": "Option 2: Expand footprint within Nigeria. Full scale-up in existing states of operation plus a new third state: FCT, Oyo, Jigawa. Totals for the full three-state footprint:"
-        },
-        {
-          "type": "list",
-          "items": [
-            "1,449 facilities, 1,985,558 women over three years",
-            "$255 per DALY averted, $5.21 per woman initiated",
-            "Requires new fundraising, not currently committed"
-          ]
-        },
-        {
-          "type": "p",
-          "text": "Cost-effectiveness improves because many programmatic costs are largely fixed and spread across a larger population. The model applies a 20% benefit reduction to Jigawa to reflect poorer care-seeking behavior relative to the pilot states. The Federal Ministry has expressed strong interest in a multi-state footprint, and MMS is already in national guidelines."
-        },
-        {
-          "type": "p",
-          "text": "Option 3: Maintain funded Nigeria footprint and expand into New Country. Maintain existing footprint within FCT and Oyo, and open a first program in New Country."
-        },
-        {
-          "type": "list",
-          "items": [
-            "Approximately 1.1 million women in New Country over three years",
-            "Estimated $185 per DALY averted in New Country, $6.90 per woman initiated",
-            "A donor has offered to fully fund three years in New Country. The commitment is restricted to that geography."
-          ]
-        },
-        {
-          "type": "p",
-          "text": "New Country carries a substantially higher burden, driving better cost-effectiveness: low birth weight prevalence of 13% against Nigeria's 7%, anemia prevalence in pregnancy of 68% against 56%, and higher neonatal mortality. The New Country estimate applies the consumption distribution observed in the Nigeria pilot and the same 75% initiation assumption. Delivery costs are estimated by using Nigeria actual costs as a proxy. ANC attendance in New Country is later and less frequent than in Nigeria. MMS is not yet in New Country's national treatment guidelines."
         },
         {
           "type": "h",
           "text": "What we are asking"
         },
         {
-          "type": "p",
-          "text": "Question 1: Gating criteria (1 page). Evidence Action has stage gates for approving new programs and for moving from pilot to scale, but no consistent standard for the decision that comes next: whether to hold a launched program or expand it, and on what evidence. The CEO has asked that your recommendation come with the beginnings of one. Set out the criteria that should govern this decision, designed so they could be applied to the next program and not only to this one. Include the evidence conditions a program should be required to satisfy at a gate at this stage."
-        },
-        {
-          "type": "p",
-          "text": "Question 2: Your read of the evidence (1 to 2 pages). What is your assessment of the evidence presented to you from the pilot?"
-        },
-        {
-          "type": "list",
+          "type": "cards",
+          "layout": "stack",
           "items": [
-            "For each criterion you proposed above, state whether the MMS pilot passes, fails, or is indeterminate against it.",
-            "Be specific about what in this evidence you would rely on, what you would qualify, and what you would discount completely.",
-            "The projection that women consume an average of 117 tablets rests on an assumption about the women with no consumption data. Recompute that projection under a different assumption of your choosing. State the assumption, show your arithmetic.",
-            "What is your probability that true average consumption through term is below 100 tablets? What would move that number most?"
+            {
+              "title": "Question 1: Gating criteria (1 page)",
+              "text": "Evidence Action has stage gates for approving new programs and for moving from pilot to scale, but no consistent standard for the decision that comes next: whether to hold a launched program or expand it, and on what evidence. The CEO has asked that your recommendation come with the beginnings of one. Set out the criteria that should govern this decision, designed so they could be applied to the next program and not only to this one. Include the evidence conditions a program should be required to satisfy at a gate at this stage."
+            },
+            {
+              "title": "Question 2: Your read of the evidence (1 to 2 pages)",
+              "text": "What is your assessment of the evidence presented to you from the pilot?",
+              "points": [
+                "For each criterion you proposed above, state whether the MMS pilot passes, fails, or is indeterminate against it.",
+                "Be specific about what in this evidence you would rely on, what you would qualify, and what you would discount completely.",
+                "The projection that women consume an average of 117 tablets rests on an assumption about the women with no consumption data. Recompute that projection under a different assumption of your choosing. State the assumption, show your arithmetic.",
+                "What is your probability that true average consumption through term is below 100 tablets? What would move that number most?"
+              ]
+            },
+            {
+              "title": "Question 3: Recommendation (under 1 page)",
+              "text": "Which option do you think the evidence supports, and why, assessed against the criteria you have just set out? If you make any assumptions please name them clearly. Also include:",
+              "points": [
+                "The one thing that, if it resolved differently, would change your recommendation.",
+                "One thing you know is unresolved and are choosing to live with, and why that is acceptable."
+              ]
+            },
+            {
+              "title": "Question 4: Next gate and learning agenda (1 to 2 pages; a table is fine)",
+              "text": "Name the interval before you would expect the next gating decision on this program. If your recommendation is followed, what will we know at that gate that we do not know now, and how will we come to know it?",
+              "points": [
+                "Be specific about method, and assume the agenda has to be executable within the interval you named.",
+                "Cover both what we need to learn to make the next gate decision and what we need to learn to run the program better in the meantime.",
+                "For each item, say what it costs us in money or in health worker time."
+              ]
+            }
           ]
         },
         {
           "type": "p",
-          "text": "Question 3: Recommendation (under 1 page). Which option do you think the evidence supports, and why, assessed against the criteria you have just set out? If you make any assumptions please name them clearly. Also include:"
-        },
-        {
-          "type": "list",
-          "items": [
-            "The one thing that, if it resolved differently, would change your recommendation.",
-            "One thing you know is unresolved and are choosing to live with, and why that is acceptable."
-          ]
-        },
-        {
-          "type": "p",
-          "text": "Question 4: Next gate and learning agenda (1 to 2 pages; a table is fine). Name the interval before you would expect the next gating decision on this program. If your recommendation is followed, what will we know at that gate that we do not know now, and how will we come to know it?"
-        },
-        {
-          "type": "list",
-          "items": [
-            "Be specific about method, and assume the agenda has to be executable within the interval you named.",
-            "Cover both what we need to learn to make the next gate decision and what we need to learn to run the program better in the meantime.",
-            "For each item, say what it costs us in money or in health worker time."
-          ]
-        },
-        {
-          "type": "p",
-          "text": "Recommended option. After you submit your written response you will be asked to select your recommended option. Please make sure it matches your written response."
+          "text": "Recommended option. Below this case you will be asked to select your recommended option first, and then to submit your written response. Please make sure the two match."
         },
         {
           "type": "h",
-          "text": "AI use and disclosure (required)"
+          "text": "AI use"
         },
         {
           "type": "p",
-          "text": "You may use AI tools. We are not testing whether you can complete this exercise without them but we expect your submission to include your own thinking and analysis and we are interested in how you use them. At the end of your response, include a paragraph covering:"
-        },
-        {
-          "type": "list",
-          "items": [
-            "What you used, and for which parts",
-            "What it got wrong, or where you disagreed with it",
-            "What you checked independently"
-          ]
-        },
-        {
-          "type": "p",
-          "text": "If you used AI, please also add documentation of your usage (the prompts you used, or transcripts from your AI use). You will be able to attach this separately after your response. This applies to both stages."
-        }
-      ]
-    },
-    "stage1_option": {
-      "section": "Stage 1 of 2",
-      "heading": "The decision before you",
-      "blocks": [
-        {
-          "type": "p",
-          "text": "No option involves withdrawing from where we operated the pilot. The choice is what we do beyond that."
-        },
-        {
-          "type": "list",
-          "items": [
-            "Option 1: Hold at the pilot footprint with a learning agenda, do not scale. 90 facilities, 52,000 women per year, $292 per DALY averted, existing funding covers this footprint.",
-            "Option 2: Expand footprint within Nigeria. Full scale-up in FCT and Oyo plus Jigawa: 1,449 facilities, 1,985,558 women over three years, $255 per DALY averted, requires new fundraising.",
-            "Option 3: Maintain funded Nigeria footprint and expand into New Country. Approximately 1.1 million women over three years, estimated $185 per DALY averted in New Country, fully funded by a donor for three years and restricted to that geography."
-          ]
+          "text": "You may use AI tools. We are not testing whether you can complete this exercise without them, but we expect your submission to include your own thinking and analysis, and we are interested in how you use them. After Stage 2 you will be asked one closing question: what you used and for which parts, what it got wrong or where you disagreed with it, and what you checked independently, with the option to attach your prompts or transcripts. You do not need to write that here."
         }
       ]
     },
@@ -690,7 +653,7 @@
         },
         {
           "type": "p",
-          "text": "Welcome to Stage 2, the final stage. Your Stage 1 response has been submitted and cannot be revised. Estimated time: 60 to 90 minutes. Use any format you prefer: write your response below or attach it as a PDF or Word document. Continue to disclose any AI tools used at the end of your response."
+          "text": "Welcome to Stage 2, the final stage. Your Stage 1 response has been submitted and cannot be revised, but you can re-read it with the Review link below. We suggest 1 to 1.5 hours. Write your response in the box below or attach it as a PDF (from Word or Google Docs: File, then Save As or Download, and choose PDF). After you submit it there is one short closing question about your use of AI."
         },
         {
           "type": "h",
@@ -714,20 +677,22 @@
           "text": "Please respond to the three items below. Aim for approximately two to three pages total."
         },
         {
-          "type": "list",
+          "type": "cards",
+          "layout": "stack",
           "items": [
-            "Question 1: Your response. Write your reply to the Program Director. Be clear about where you concede and why, and where you hold and why.",
-            "Question 2: To the CEO. Write a note to the CEO on where this stands, where you see points of ongoing disagreement, and what, if anything, you need from her.",
-            "Question 3: Talking points. You will need to discuss this with your team internally, and possibly with external government and donor partners. This does not need to be polished, but draft a few bullets to guide your response. What do we know and what do we not know?"
+            {
+              "title": "Question 1: Your response",
+              "text": "Write your reply to the Program Director. Be clear about where you concede and why, and where you hold and why."
+            },
+            {
+              "title": "Question 2: To the CEO",
+              "text": "Write a note to the CEO on where this stands, where you see points of ongoing disagreement, and what, if anything, you need from her."
+            },
+            {
+              "title": "Question 3: Talking points",
+              "text": "You will need to discuss this with your team internally, and possibly with external government and donor partners. This does not need to be polished, but draft a few bullets to guide your response. What do we know and what do we not know?"
+            }
           ]
-        },
-        {
-          "type": "h",
-          "text": "AI use and disclosure (required)"
-        },
-        {
-          "type": "p",
-          "text": "You may use AI tools. We are not testing whether you can complete this exercise without them but we expect your submission to include your own thinking and analysis and we are interested in how you use them. At the end of your response, include a paragraph covering what you used and for which parts, what it got wrong or where you disagreed with it, and what you checked independently. If you used AI, please also add documentation of your usage (the prompts you used, or transcripts from your AI use); you will be able to attach this after your response."
         }
       ]
     },
@@ -741,7 +706,7 @@
         },
         {
           "type": "p",
-          "text": "Welcome to Stage 2, the final stage. Your Stage 1 response has been submitted and cannot be revised. Estimated time: 60 to 90 minutes. Use any format you prefer: write your response below or attach it as a PDF or Word document. Continue to disclose any AI tools used at the end of your response."
+          "text": "Welcome to Stage 2, the final stage. Your Stage 1 response has been submitted and cannot be revised, but you can re-read it with the Review link below. We suggest 1 to 1.5 hours. Write your response in the box below or attach it as a PDF (from Word or Google Docs: File, then Save As or Download, and choose PDF). After you submit it there is one short closing question about your use of AI."
         },
         {
           "type": "h",
@@ -765,20 +730,22 @@
           "text": "Please respond to the three items below. Aim for approximately two to three pages total."
         },
         {
-          "type": "list",
+          "type": "cards",
+          "layout": "stack",
           "items": [
-            "Question 1: Your response. Write your reply to the Program Director. Be clear about where you concede and why, and where you hold and why.",
-            "Question 2: To the CEO. Write a note to the CEO on where this stands, where you see points of ongoing disagreement, and what, if anything, you need from her.",
-            "Question 3: Talking points. You will need to discuss this with your team internally, and possibly with external government and donor partners. This does not need to be polished, but draft a few bullets to guide your response. What do we know and what do we not know?"
+            {
+              "title": "Question 1: Your response",
+              "text": "Write your reply to the Program Director. Be clear about where you concede and why, and where you hold and why."
+            },
+            {
+              "title": "Question 2: To the CEO",
+              "text": "Write a note to the CEO on where this stands, where you see points of ongoing disagreement, and what, if anything, you need from her."
+            },
+            {
+              "title": "Question 3: Talking points",
+              "text": "You will need to discuss this with your team internally, and possibly with external government and donor partners. This does not need to be polished, but draft a few bullets to guide your response. What do we know and what do we not know?"
+            }
           ]
-        },
-        {
-          "type": "h",
-          "text": "AI use and disclosure (required)"
-        },
-        {
-          "type": "p",
-          "text": "You may use AI tools. We are not testing whether you can complete this exercise without them but we expect your submission to include your own thinking and analysis and we are interested in how you use them. At the end of your response, include a paragraph covering what you used and for which parts, what it got wrong or where you disagreed with it, and what you checked independently. If you used AI, please also add documentation of your usage (the prompts you used, or transcripts from your AI use); you will be able to attach this after your response."
         }
       ]
     },
@@ -792,7 +759,7 @@
         },
         {
           "type": "p",
-          "text": "Welcome to Stage 2, the final stage. Your Stage 1 response has been submitted and cannot be revised. Estimated time: 60 to 90 minutes. Use any format you prefer: write your response below or attach it as a PDF or Word document. Continue to disclose any AI tools used at the end of your response."
+          "text": "Welcome to Stage 2, the final stage. Your Stage 1 response has been submitted and cannot be revised, but you can re-read it with the Review link below. We suggest 1 to 1.5 hours. Write your response in the box below or attach it as a PDF (from Word or Google Docs: File, then Save As or Download, and choose PDF). After you submit it there is one short closing question about your use of AI."
         },
         {
           "type": "h",
@@ -840,74 +807,90 @@
           "text": "Please respond to the three items below. Aim for approximately two to three pages total."
         },
         {
-          "type": "list",
+          "type": "cards",
+          "layout": "stack",
           "items": [
-            "Question 1: Your response. Write your response to the Program Director's position on continuing. Be clear about what you accept and what you do not.",
-            "Question 2: To the CEO. Write the email to the CEO. Address whether the decision was right at the time, given what was known, and what you recommend now. If you believe some part of our process or performance failed, name it and explain why.",
-            "Question 3: Talking points. You will need to discuss this with your team internally, and possibly with external government and donor partners. This does not need to be polished, but draft a few bullets to guide your response. What do we know and what do we not know?"
+            {
+              "title": "Question 1: Your response",
+              "text": "Write your response to the Program Director's position on continuing. Be clear about what you accept and what you do not."
+            },
+            {
+              "title": "Question 2: To the CEO",
+              "text": "Write the email to the CEO. Address whether the decision was right at the time, given what was known, and what you recommend now. If you believe some part of our process or performance failed, name it and explain why."
+            },
+            {
+              "title": "Question 3: Talking points",
+              "text": "You will need to discuss this with your team internally, and possibly with external government and donor partners. This does not need to be polished, but draft a few bullets to guide your response. What do we know and what do we not know?"
+            }
           ]
-        },
-        {
-          "type": "h",
-          "text": "AI use and disclosure (required)"
-        },
-        {
-          "type": "p",
-          "text": "You may use AI tools. We are not testing whether you can complete this exercise without them but we expect your submission to include your own thinking and analysis and we are interested in how you use them. At the end of your response, include a paragraph covering what you used and for which parts, what it got wrong or where you disagreed with it, and what you checked independently. If you used AI, please also add documentation of your usage (the prompts you used, or transcripts from your AI use); you will be able to attach this after your response."
         }
       ]
     }
   },
   "questions": [
     {
-      "id": "s1_response",
+      "id": "s1_option",
+      "section": "s1",
+      "brief": "stage1",
+      "type": "choice",
+      "prompt": "Which option do you recommend?",
+      "context": "Read the case above, then pick one. Stage 2 follows from this selection, and you will not be able to change it once you continue. You will write up your reasoning in the next step.",
+      "options": [
+        {
+          "label": "Option 1: Hold at the pilot footprint with a learning agenda, do not scale",
+          "next": "s1_response_a"
+        },
+        {
+          "label": "Option 2: Expand footprint within Nigeria",
+          "next": "s1_response_b"
+        },
+        {
+          "label": "Option 3: Maintain funded Nigeria footprint and expand into New Country",
+          "next": "s1_response_c"
+        }
+      ]
+    },
+    {
+      "id": "s1_response_a",
       "section": "s1",
       "brief": "stage1",
       "type": "rich",
       "require": "either",
       "accept": [
-        "pdf",
-        "docx"
+        "pdf"
       ],
       "prompt": "Your Stage 1 response",
-      "context": "Answer Questions 1 to 4 above and end with your AI use disclosure paragraph. Write it here or attach a PDF or Word document, whichever suits you; one is enough. Long or table-heavy responses are usually easier to attach.",
-      "maxLength": 24000
+      "context": "You recommended Option 1: Hold at the pilot footprint with a learning agenda, do not scale. Now answer Questions 1 to 4 above, making the case for that recommendation in Question 3. Choose one way to respond below: paste or type your answer, or attach a PDF.",
+      "maxLength": 24000,
+      "next": "path_a_response"
     },
     {
-      "id": "s1_ai_docs",
+      "id": "s1_response_b",
       "section": "s1",
+      "brief": "stage1",
       "type": "rich",
-      "require": "optional",
+      "require": "either",
       "accept": [
-        "pdf",
-        "docx"
+        "pdf"
       ],
-      "prompt": "Stage 1: documentation of your AI use",
-      "context": "If you used AI tools, attach or paste the prompts you used or transcripts from your AI use. A file is better for anything long. Leave this blank if you did not use AI.",
-      "maxLength": 6000,
-      "attachment": "optional"
+      "prompt": "Your Stage 1 response",
+      "context": "You recommended Option 2: Expand footprint within Nigeria. Now answer Questions 1 to 4 above, making the case for that recommendation in Question 3. Choose one way to respond below: paste or type your answer, or attach a PDF.",
+      "maxLength": 24000,
+      "next": "path_b_response"
     },
     {
-      "id": "s1_option",
+      "id": "s1_response_c",
       "section": "s1",
-      "brief": "stage1_option",
-      "type": "choice",
-      "prompt": "Which option do you recommend?",
-      "context": "Please make sure this matches your written response. Stage 2 follows from this selection, and you will not be able to change it once you continue.",
-      "options": [
-        {
-          "label": "Option 1: Hold at the pilot footprint with a learning agenda, do not scale",
-          "next": "path_a_response"
-        },
-        {
-          "label": "Option 2: Expand footprint within Nigeria",
-          "next": "path_b_response"
-        },
-        {
-          "label": "Option 3: Maintain funded Nigeria footprint and expand into New Country",
-          "next": "path_c_response"
-        }
-      ]
+      "brief": "stage1",
+      "type": "rich",
+      "require": "either",
+      "accept": [
+        "pdf"
+      ],
+      "prompt": "Your Stage 1 response",
+      "context": "You recommended Option 3: Maintain funded Nigeria footprint and expand into New Country. Now answer Questions 1 to 4 above, making the case for that recommendation in Question 3. Choose one way to respond below: paste or type your answer, or attach a PDF.",
+      "maxLength": 24000,
+      "next": "path_c_response"
     },
     {
       "id": "path_a_response",
@@ -916,13 +899,12 @@
       "type": "rich",
       "require": "either",
       "accept": [
-        "pdf",
-        "docx"
+        "pdf"
       ],
       "prompt": "Your Stage 2 response",
-      "context": "Answer the three items above and end with your AI use disclosure paragraph. Write it here or attach a PDF or Word document; one is enough.",
+      "context": "Answer the three items above. Choose one way to respond below: paste or type your answer, or attach a PDF.",
       "maxLength": 12000,
-      "next": "s2_ai_docs"
+      "next": "ai_use"
     },
     {
       "id": "path_b_response",
@@ -931,13 +913,12 @@
       "type": "rich",
       "require": "either",
       "accept": [
-        "pdf",
-        "docx"
+        "pdf"
       ],
       "prompt": "Your Stage 2 response",
-      "context": "Answer the three items above and end with your AI use disclosure paragraph. Write it here or attach a PDF or Word document; one is enough.",
+      "context": "Answer the three items above. Choose one way to respond below: paste or type your answer, or attach a PDF.",
       "maxLength": 12000,
-      "next": "s2_ai_docs"
+      "next": "ai_use"
     },
     {
       "id": "path_c_response",
@@ -946,28 +927,26 @@
       "type": "rich",
       "require": "either",
       "accept": [
-        "pdf",
-        "docx"
+        "pdf"
       ],
       "prompt": "Your Stage 2 response",
-      "context": "Answer the three items above and end with your AI use disclosure paragraph. Write it here or attach a PDF or Word document; one is enough.",
+      "context": "Answer the three items above. Choose one way to respond below: paste or type your answer, or attach a PDF.",
       "maxLength": 12000,
-      "next": "s2_ai_docs"
+      "next": "ai_use"
     },
     {
-      "id": "s2_ai_docs",
-      "section": "s2",
+      "id": "ai_use",
+      "section": "s3",
       "type": "rich",
-      "require": "optional",
+      "require": "text",
+      "attachment": "optional",
       "accept": [
-        "pdf",
-        "docx"
+        "pdf"
       ],
-      "prompt": "Stage 2: documentation of your AI use",
-      "context": "If you used AI tools in Stage 2, attach or paste the prompts you used or transcripts from your AI use. Leave this blank if you did not use AI. This is the last question: submitting it completes the exercise.",
-      "maxLength": 6000,
-      "next": null,
-      "attachment": "optional"
+      "prompt": "How did you use AI in this exercise?",
+      "context": "Cover both stages. What you used and for which parts, what it got wrong or where you disagreed with it, and what you checked independently. If you did not use AI, say so. If you did, and you can, attach the prompts you used or transcripts from your AI use as a PDF. This is the last question: submitting it completes the exercise.",
+      "maxLength": 4000,
+      "next": null
     }
   ]
 }

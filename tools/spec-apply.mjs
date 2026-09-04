@@ -51,7 +51,7 @@ const problems = validateFlow(spec.questions || []);
 
 // The link URLs are the one place an author's text reaches an HTML attribute, so they are
 // checked here as well as in the builder. A spec can arrive by any route, including by hand.
-const BLOCK_TYPES = ['p', 'h', 'list', 'table', 'quote', 'link'];
+const BLOCK_TYPES = ['p', 'h', 'list', 'table', 'cards', 'quote', 'link'];
 for (const [key, brief] of Object.entries(spec.briefs || {})) {
   for (const block of brief.blocks || []) {
     if (!BLOCK_TYPES.includes(block.type)) {
@@ -64,6 +64,9 @@ for (const [key, brief] of Object.entries(spec.briefs || {})) {
     }
     if (block.type === 'table' && !(Array.isArray(block.rows) && block.rows.every((r) => Array.isArray(r)))) {
       problems.push({ level: 'error', message: `A table in brief "${key}" needs "rows" as an array of arrays.` });
+    }
+    if (block.type === 'cards' && !(Array.isArray(block.items) && block.items.length && block.items.every((it) => it && typeof it === 'object'))) {
+      problems.push({ level: 'error', message: `A cards block in brief "${key}" needs "items", each an object with a title.` });
     }
   }
 }
@@ -176,8 +179,9 @@ export const SECTIONS = ${lit(spec.sections)};
 /**
  * Reference material that stays on screen for every question in a part. Block types the client
  * knows how to render: 'p' (paragraph), 'h' (subheading), 'list' (bullet points), 'table' (a
- * header row and data rows), 'quote' (a Slack, email or memo, with a label and optional numbered
- * list), 'link' (a button out to the data).
+ * header row and data rows), 'cards' (parallel items with a title, text, points and a closing
+ * line, side by side or stacked), 'quote' (a Slack, email or memo, with a label and optional
+ * numbered list), 'link' (a button out to the data).
  */
 export const BRIEFS = ${lit(spec.briefs || {})};
 

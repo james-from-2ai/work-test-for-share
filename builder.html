@@ -187,6 +187,7 @@ code { font-family: var(--mono); font-size: 0.82em; }
 .pv .brief table { border-collapse: collapse; margin: 0.3rem 0 0.6rem; font-size: 0.76rem; }
 .pv .brief th, .pv .brief td { text-align: left; vertical-align: top; padding: 0.15rem 0.45rem; border-bottom: 1px solid var(--border); }
 .pv .brief p { white-space: pre-line; }
+.pv .brief .pv-card { border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.6rem; margin: 0.35rem 0; }
 .pv .brief figcaption { font-weight: 640; color: var(--ink); font-size: 0.76rem; }
 .pv .opt { display: block; width: 100%; text-align: left; margin-bottom: 0.3rem; }
 .pv .fake { border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 0.55rem; color: var(--muted); font-size: 0.8rem; margin-bottom: 0.6rem; }
@@ -316,7 +317,35 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(
 
 /** Builds an element. Text always goes in as text, never as markup. */
 /** What each brief block type is called in the editor. Keep in step with renderBrief in app.js. */
-const BLOCK_NAMES = { p: 'Paragraph', h: 'Subheading', list: 'Bullet list', table: 'Table', quote: 'Quoted message', link: 'Link to data' };
+const BLOCK_NAMES = { p: 'Paragraph', h: 'Subheading', list: 'Bullet list', table: 'Table', cards: 'Cards', quote: 'Quoted message', link: 'Link to data' };
+
+/**
+ * Cards are edited as plain text, one card per blank-line-separated block: first line the title,
+ * lines starting "- " bullet points, a line starting "> " the closing note, everything else the
+ * body. These two functions go between that text and the spec's {title, text, points, after}.
+ */
+function cardsToText(items) {
+  return (items || []).map((it) => [
+    it.title || '',
+    ...(it.text ? [it.text] : []),
+    ...(it.points || []).map((p) => `- ${p}`),
+    ...(it.after ? [`> ${it.after}`] : []),
+  ].join('\n')).join('\n\n');
+}
+function textToCards(text) {
+  return String(text || '').split(/\n{2,}/).map((chunk) => chunk.trim()).filter(Boolean).map((chunk) => {
+    const lines = chunk.split('\n').map((l) => l.trim()).filter(Boolean);
+    const item = { title: lines.shift() || '' };
+    const body = [];
+    for (const l of lines) {
+      if (l.startsWith('- ')) (item.points = item.points || []).push(l.slice(2).trim());
+      else if (l.startsWith('> ')) item.after = l.slice(2).trim();
+      else body.push(l);
+    }
+    if (body.length) item.text = body.join(' ');
+    return item;
+  });
+}
 
 function el(tag, props = {}, ...kids) {
   const n = document.createElement(tag);
@@ -600,6 +629,14 @@ function drawSetup(stage) {
   told.append(field('Opening note (optional)', area(intro.blurb, (v) => { if (v) intro.blurb = v; else delete intro.blurb; touch(); }, 3),
     'Sits under the summary sentence, above the rules.'));
 
+  told.append(el('p', { class: 'colhead', text: 'At a glance' }));
+  told.append(el('p', { class: 'hint', text: 'Three tiles at the top of the instructions: time, structure, format. Time and format are written from the settings. These two fields are the parts only you know.' }));
+  told.append(el('div', { class: 'row' },
+    field('Suggested time (untimed tests only)', area(intro.estimate, (v) => { if (v) intro.estimate = v; else delete intro.estimate; touch(); }, 2),
+      'For example "We suggest about 4 hours: 2 to 3 for Stage 1 and 1 to 1.5 for Stage 2." Ignored when a clock is set.'),
+    field('Structure, in one or two sentences (optional)', area(intro.structure, (v) => { if (v) intro.structure = v; else delete intro.structure; touch(); }, 2),
+      'What the parts are and what locks when. Left blank, it is written from the number of parts and the going-back setting.')));
+
   told.append(el('p', { class: 'colhead', text: 'Your own rules' }));
   intro.rules = Array.isArray(intro.rules) ? intro.rules : [];
   intro.rules.forEach((r, i) => {
@@ -882,6 +919,12 @@ function drawBriefs(root) {
           b.items = v.split('\n').map((x) => x.trim()).filter(Boolean);
           touch();
         }, 4)));
+      } else if (b.type === 'cards') {
+        bb.append(field('Layout', select([['grid', 'Side by side'], ['stack', 'Stacked']], b.layout === 'stack' ? 'stack' : 'grid', (v) => { b.layout = v; touch(); })));
+        bb.append(field('Cards, separated by a blank line. First line is the title, "- " starts a bullet, "> " starts a closing note.', area(cardsToText(b.items), (v) => {
+          b.items = textToCards(v);
+          touch();
+        }, 8)));
       } else if (b.type === 'table') {
         // One row per line, cells separated by a pipe. The first line is the header row.
         const toText = () => [b.head || [], ...(b.rows || [])].map((r) => r.join(' | ')).join('\n');
@@ -913,6 +956,7 @@ function drawBriefs(root) {
       el('button', { class: 'btn tiny', text: '+ Subheading', onclick: () => { brief.blocks.push({ type: 'h', text: '' }); drawDetail(); touch(); } }),
       el('button', { class: 'btn tiny', text: '+ Bullet list', onclick: () => { brief.blocks.push({ type: 'list', items: [] }); drawDetail(); touch(); } }),
       el('button', { class: 'btn tiny', text: '+ Table', onclick: () => { brief.blocks.push({ type: 'table', head: ['Column', 'Column'], rows: [['', '']] }); drawDetail(); touch(); } }),
+      el('button', { class: 'btn tiny', text: '+ Cards', onclick: () => { brief.blocks.push({ type: 'cards', layout: 'grid', items: [{ title: 'Option 1', text: '' }, { title: 'Option 2', text: '' }] }); drawDetail(); touch(); } }),
       el('button', { class: 'btn tiny', text: '+ Quoted message', onclick: () => { brief.blocks.push({ type: 'quote', label: '', text: '' }); drawDetail(); touch(); } }),
       el('button', { class: 'btn tiny', text: '+ Link to data', onclick: () => { brief.blocks.push({ type: 'link', label: 'Open the data', url: 'https://' }); drawDetail(); touch(); } })));
     root.append(box);
@@ -1137,7 +1181,16 @@ function drawWalk(root) {
         if (block.type === 'p') b.append(el('p', { text: block.text }));
         else if (block.type === 'h') b.append(el('h4', { text: block.text }));
         else if (block.type === 'list') { const ul = el('ul'); for (const it of block.items || []) ul.append(el('li', { text: it })); b.append(ul); }
-        else if (block.type === 'table') {
+        else if (block.type === 'cards') {
+          for (const it of block.items || []) {
+            const c = el('div', { class: 'pv-card' });
+            if (it.title) c.append(el('strong', { text: it.title }));
+            if (it.text) c.append(el('p', { text: it.text }));
+            if (it.points && it.points.length) { const ul = el('ul'); for (const pt of it.points) ul.append(el('li', { text: pt })); c.append(ul); }
+            if (it.after) c.append(el('p', {}, el('em', { text: it.after })));
+            b.append(c);
+          }
+        } else if (block.type === 'table') {
           const t = el('table');
           if (block.head && block.head.length) { const tr = el('tr'); for (const c of block.head) tr.append(el('th', { text: c })); t.append(tr); }
           for (const row of block.rows || []) { const tr = el('tr'); for (const c of row) tr.append(el('td', { text: c })); t.append(tr); }
