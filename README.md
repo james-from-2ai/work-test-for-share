@@ -118,6 +118,18 @@ Then open `/admin.html`, paste the admin key, and issue a link per candidate.
   the closing screen greets the candidate by name. A light/dark toggle sits at the top right; without a choice the
   page follows the device setting, and a choice is remembered in that browser only.
 
+## Which build is live
+
+Cloudflare Pages gives **every deployment its own permanent hostname** (`https://<hash>.evidence-action-evp-work-test.pages.dev`), and those hostnames keep serving the build they were created from for as long as anyone uses them. The Cloudflare bot posts one on every commit, so it is easy to end up working from a bookmarked link that is several deployments behind, issuing candidate links from it, and seeing an older version of the test with no sign that anything is stale.
+
+So the admin page says what it is talking to. Load results and the line under the key reads, for example:
+
+> Serving 6 questions from https://evidence-action-evp-work-test.pages.dev/: s1 → ai_stage1 (after s1) → path_a_response → path_b_response → path_c_response → ai_stage2. Parts: Stage 1, Stage 2. Review screen: yes.
+
+It is read back from the engine that enforces the route, so it cannot disagree with what a candidate will actually walk. If it does not match the test you expect, you are on an old deployment: open the project's own URL (no hash in front) and issue links from there. It is admin-only, because the ordered ids describe the branches.
+
+Two things follow from how the route is derived. A session's route comes from the answers already recorded, and the answered prefix is never re-interpreted, so **a session that started before a flow change keeps the old route** and a newly inserted question is skipped for it. Deleting the row (Reset on the admin page) is how you give that person the current test. And do not publish the test while anyone is mid-sitting.
+
 ## Changing the test
 
 The test is `tools/evp-spec.json`. `functions/_lib/wt-questions.mjs` is **generated** from it and

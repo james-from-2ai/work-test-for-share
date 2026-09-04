@@ -68,6 +68,13 @@
       <button class="primary" id="load">Load results</button>
     </div>
     <p class="err" id="err" hidden></p>
+    <!--
+      Which build this page is talking to, read back from the engine that enforces it. Cloudflare
+      Pages gives every deployment its own permanent hostname, so a bookmarked admin or candidate
+      link keeps serving the build it was made on. If this line does not match the test you expect,
+      you are on an old deployment: open the project's own URL and issue links from there.
+    -->
+    <p class="muted small" id="shape" hidden></p>
   </section>
 
   <section class="card">
@@ -422,7 +429,19 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': 
 
 async function load() {
   const data = await admin('list');
-  if (data.ok) renderRows(data.rows, data.base);
+  if (!data.ok) return;
+  renderRows(data.rows, data.base);
+  renderShape(data.shape, data.base);
+}
+
+/** The route this deployment serves, so an old deployment is visible rather than inferred. */
+function renderShape(shape, base) {
+  const el = $('#shape');
+  if (!shape) return;
+  el.hidden = false;
+  el.textContent = `Serving ${shape.questions} questions from ${base}: `
+    + `${shape.route.join(' \u2192 ')}. Parts: ${shape.parts.join(', ')}.`
+    + ` Review screen: ${shape.review ? 'yes' : 'no'}.`;
 }
 
 $('#load').addEventListener('click', load);

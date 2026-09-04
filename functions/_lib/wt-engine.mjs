@@ -1359,6 +1359,28 @@ async function register(store, body, now, cfg) {
  * for files on a store with nowhere to put them fails at the door, loudly, instead of halfway
  * through a candidate's sitting.
  */
+/**
+ * What test this deployment is actually serving: the route, in order, and whether it ends on a
+ * review screen.
+ *
+ * This exists because "is my change live?" turned out to be a question nobody could answer from
+ * the outside. Cloudflare Pages hands out an immutable hostname per deployment, so a bookmarked
+ * link keeps serving the build it was created on for as long as it is used, and the only symptom
+ * is a candidate walking an older version of the test. Reading it back from the engine that would
+ * enforce it is the one answer that cannot be stale.
+ *
+ * Admin-only: the ordered question ids describe the branches, which is exactly what a candidate
+ * must not be shown before they choose.
+ */
+export function liveShape(cfg = config()) {
+  return {
+    questions: cfg.questions.length,
+    route: cfg.questions.map((q) => (q.branchFrom ? `${q.id} (after ${q.branchFrom})` : q.id)),
+    parts: cfg.sections.map((s) => s.label),
+    review: !!cfg.review,
+  };
+}
+
 export function readiness(store, cfg = config()) {
   const needsFiles = cfg.questions.some((q) => attachmentOf(q) !== 'none');
   if (needsFiles && typeof store.putFile !== 'function') {

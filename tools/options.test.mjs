@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { handle, createCandidates, config, requireOf, attachmentOf, introFor } from '../functions/_lib/wt-engine.mjs';
+import { handle, createCandidates, config, requireOf, attachmentOf, introFor, liveShape } from '../functions/_lib/wt-engine.mjs';
 
 function memStore() {
   const db = new Map();
@@ -1013,4 +1013,19 @@ test('a sitting cut short by the clock is not sent to the review screen', async 
   const late = await handle(store, { action: 'state', token }, T0 + 900 * 1000, cfg);
   assert.equal(late.phase, 'done');
   assert.equal(late.reviewScreen, undefined);
+});
+
+test('a deployment can say which test it is actually serving', async () => {
+  const cfg = make({ timing: { mode: 'none' }, review: REVIEW });
+  const shape = liveShape(cfg);
+  assert.equal(shape.questions, 3);
+  assert.deepEqual(shape.route, ['a', 'b', 'c']);
+  assert.deepEqual(shape.parts, ['Part 1', 'Part 2']);
+  assert.equal(shape.review, true);
+
+  // A question asked between a branch and its routes says so, because that is exactly the kind of
+  // change that is invisible from the outside when an old build is still being served.
+  const detoured = liveShape(config({ sections: SECTIONS, questions: DETOUR, timing: { mode: 'none' } }));
+  assert.deepEqual(detoured.route, ['pick', 'mid (after pick)', 'a1', 'a2']);
+  assert.equal(detoured.review, false);
 });

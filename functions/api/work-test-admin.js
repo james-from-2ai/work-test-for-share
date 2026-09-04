@@ -24,7 +24,7 @@
  *   TEST_PATH - optional, defaults to / in this copy. Only used to build candidate links.
  */
 
-import { createCandidates, listCandidates, deleteCandidate, toCsv, config } from '../_lib/wt-engine.mjs';
+import { createCandidates, listCandidates, deleteCandidate, toCsv, config, liveShape } from '../_lib/wt-engine.mjs';
 import { storeFor } from '../_lib/wt-store.mjs';
 import { json, readJson, secretEquals } from '../_lib/wt-kv.mjs';
 
@@ -80,7 +80,8 @@ export async function onRequestPost({ request, env }) {
       }
 
       case 'list':
-        return json({ ok: true, rows: await listCandidates(store, Date.now(), cfg), base });
+        // `shape` is what this deployment is serving, read back from the engine. See liveShape.
+        return json({ ok: true, rows: await listCandidates(store, Date.now(), cfg), base, shape: liveShape(cfg) });
 
       case 'csv': {
         // Leading BOM so Excel reads it as UTF-8 rather than the system codepage, which
