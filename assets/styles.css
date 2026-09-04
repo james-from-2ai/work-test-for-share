@@ -16,8 +16,12 @@
   --focus: #2f7fd8;
 }
 
+/* Dark palette. Applied two ways: by the device setting unless the candidate has chosen light,
+   and by an explicit choice from the toggle at the top right (data-theme on <html>). The toggle
+   wins in both directions, so the two blocks below carry the same values. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #16171a;
     --card: #1e2024;
     --ink: #ececea;
@@ -30,6 +34,20 @@
     --focus: #6fb1f0;
   }
 }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #16171a;
+  --card: #1e2024;
+  --ink: #ececea;
+  --muted: #9b9b96;
+  --line: #32353a;
+  --accent: #4bab90;
+  --accent-ink: #10221c;
+  --warn: #e0a45c;
+  --danger: #e8756c;
+  --focus: #6fb1f0;
+}
+:root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 
@@ -57,7 +75,36 @@ body {
   box-shadow: 0 1px 2px rgba(20, 30, 28, 0.04), 0 12px 32px -20px rgba(20, 30, 28, 0.18);
 }
 @media (prefers-color-scheme: dark) {
-  .card { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -20px rgba(0, 0, 0, 0.6); }
+  :root:not([data-theme="light"]) .card { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -20px rgba(0, 0, 0, 0.6); }
+}
+:root[data-theme="dark"] .card { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -20px rgba(0, 0, 0, 0.6); }
+
+/* Light or dark, top right, remembered in this browser. */
+.theme-toggle {
+  position: fixed;
+  top: 0.9rem;
+  right: 0.9rem;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(20, 30, 28, 0.06);
+}
+.theme-toggle:hover { color: var(--ink); border-color: var(--accent); }
+.theme-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.theme-toggle .ico { font-size: 0.95rem; line-height: 1; }
+@media (max-width: 40rem) {
+  .theme-toggle { top: 0.5rem; right: 0.5rem; padding: 0.35rem 0.55rem; }
+  .theme-toggle .lbl-text { display: none; }
 }
 
 @media (max-width: 30rem) {

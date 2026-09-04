@@ -95,7 +95,8 @@ Then open `/admin.html`, paste the admin key, and issue a link per candidate.
 - **Nothing is a surprise.** The instructions open with three short tiles (time, structure,
   format) and six rules in one panel, the progress bar is a numbered stepper, the button that seals Stage 1
   says "Lock in and continue to Stage 2", the final confirmation turns red, and the closing screen
-  greets the candidate by name.
+  greets the candidate by name. A light/dark toggle sits at the top right; without a choice the
+  page follows the device setting, and a choice is remembered in that browser only.
 
 ## Changing the test
 
