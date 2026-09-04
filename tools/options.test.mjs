@@ -824,3 +824,42 @@ test('a single-file question still replaces rather than accumulates', async () =
   assert.deepEqual(two.uploads.map((f) => f.filename), ['b.pdf']);
   assert.equal(two.upload.filename, 'b.pdf');
 });
+
+/* ------------------------------------------------------------ links ------------------ */
+
+const LINKED = [{
+  id: 'ai', section: 'p1', type: 'rich', require: 'text', attachment: 'optional', accept: ['pdf'], maxFiles: 3, prompt: 'AI use',
+  links: { prompt: 'Share links', help: 'One per line.', max: 2, docs: [{ label: 'How', url: 'https://example.com/how' }, { label: 'bad', url: 'javascript:alert(1)' }] },
+  next: null,
+}];
+
+test('a question can ask for links: exposed with its docs, stored with the answer, shown in review', async () => {
+  const store = memStore();
+  const cfg = config({ sections: SECTIONS, questions: LINKED, timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const shown = await handle(store, { action: 'state', token }, T0 + 500, cfg);
+  assert.equal(shown.question.links.prompt, 'Share links');
+  assert.equal(shown.question.links.max, 2);
+  assert.deepEqual(shown.question.links.docs.map((d) => d.url), ['https://example.com/how'], 'a non-http doc link must never reach the page');
+
+  const bad = await handle(store, { action: 'answer', token, index: 0, questionId: 'ai', value: rich('used it'), links: ['https://chatgpt.com/share/abc', 'not a link'] }, T0 + 1000, cfg);
+  assert.equal(bad.rejected, 'bad_link');
+  assert.equal(bad.badLink, 'not a link');
+
+  const ok = await handle(store, { action: 'answer', token, index: 0, questionId: 'ai', value: rich('used it'), links: 'https://chatgpt.com/share/abc\n\nhttps://claude.ai/share/def\nhttps://claude.ai/share/def\nhttps://third.example/x' }, T0 + 2000, cfg);
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  const review = await handle(store, { action: 'review', token }, T0 + 3000, cfg);
+  assert.deepEqual(review.review[0].links, ['https://chatgpt.com/share/abc', 'https://claude.ai/share/def'], 'deduped and capped at max');
+});
+
+test('links are optional and never stand in for a required answer', async () => {
+  const store = memStore();
+  const cfg = config({ sections: SECTIONS, questions: LINKED, timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const empty = await handle(store, { action: 'answer', token, index: 0, questionId: 'ai', value: [], links: ['https://claude.ai/share/x'] }, T0 + 1000, cfg);
+  assert.equal(empty.rejected, 'empty');
+  const none = await handle(store, { action: 'answer', token, index: 0, questionId: 'ai', value: rich('No AI used') }, T0 + 2000, cfg);
+  assert.equal(none.ok, true);
+  const review = await handle(store, { action: 'review', token }, T0 + 3000, cfg);
+  assert.deepEqual(review.review[0].links, []);
+});

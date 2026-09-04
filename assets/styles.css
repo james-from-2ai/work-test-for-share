@@ -377,6 +377,9 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, label:focus-w
 /* A decision question: pick an option, then the write-up. Two labelled parts of one answer. */
 .part-label { font-size: 0.95rem; font-weight: 700; margin: 1.2rem 0 0.5rem; }
 .part-help { font-size: 0.88rem; color: var(--muted); margin: -0.2rem 0 0.6rem; }
+.part-docs a { color: var(--accent); font-weight: 600; }
+.links-wrap { margin: 0.4rem 0 0.9rem; }
+.links-input { min-height: 4.5rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9rem; }
 .part-label:first-child { margin-top: 0; }
 .files-list { margin: 0.45rem 0 0.4rem; padding-left: 1.1rem; font-size: 0.9rem; }
 .files-list li { margin-bottom: 0.2rem; }

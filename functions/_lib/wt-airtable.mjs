@@ -84,7 +84,8 @@ export function airtableStore({ token, baseId, tableId, fileField = 'Files', fet
       const files = Array.isArray(a.uploads) ? a.uploads : a.upload ? [a.upload] : [];
       const fileLines = files.filter((f) => f && f.filename).map((f) =>
         `File submitted: ${f.filename}${f.size ? ` (${Math.max(1, Math.round(f.size / 1024))} KB)` : ''}, in the Files column as ${a.id}--${f.filename}`);
-      const body = [picked, text, ...fileLines].filter(Boolean).join('\n');
+      const linkLines = (Array.isArray(a.links) ? a.links : []).map((l) => `Link: ${l}`);
+      const body = [picked, text, ...linkLines, ...fileLines].filter(Boolean).join('\n');
       return `Q${(a.index ?? 0) + 1}. ${a.prompt || ''}\n${body || (a.skipped ? '(not reached)' : '(blank)')}`;
     }).join('\n\n');
 

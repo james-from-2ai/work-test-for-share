@@ -79,8 +79,9 @@ Then open `/admin.html`, paste the admin key, and issue a link per candidate.
 - **Gated and branching.** Stage 1 is one `decision` question: the whole case, the choice of
   Option 1, 2 or 3, and the write-up on a single screen, locked in together. The option routes to
   Path A, B or C for Stage 2. After Stage 2 comes one closing question: how the candidate used AI
-  (three bulleted points, a required written answer) with their transcripts as a labelled section
-  beneath it (up to 8 PDFs, required if they used AI). A candidate never sees the destination of an
+  (three bulleted points, a required written answer), then their conversations as labelled sections
+  beneath it: public share links first (with the OpenAI and Anthropic help pages linked), PDFs as
+  the fallback (up to 8), required if they used AI. A candidate never sees the destination of an
   option before choosing it.
 - **Look back, not change.** Candidates can re-read their Stage 1 submission while working on
   Stage 2, since the memo they are answering refers to it. They cannot edit it.
@@ -181,7 +182,12 @@ A `decision` question is a choice and a formatted write-up on one screen, stored
 (`choiceIndex`, `choice`, and the write-up as `value`); its options branch exactly like a
 `choice`. `optionPrompt` and `responsePrompt` label the two halves. Any `either` question can
 carry `modes` to reword the type-or-attach chooser, and `maxFiles` to take several files. When the
-file part is a section of its own, `attachmentPrompt` and `attachmentHelp` label it.
+file part is a section of its own, `attachmentPrompt` and `attachmentHelp` label it. A question can
+also ask for web links with `links: { prompt, help, max, docs: [{ label, url }] }`: one per line,
+each checked to be an http(s) address (a bad line is refused so the candidate can fix it), stored
+with the answer, listed in review, the admin view, the CSV and the Airtable mirror. The `docs` are
+shown as help links and only http(s) addresses ever become hrefs. Spec-only for now: the builder
+does not edit `links`, `modes`, `maxFiles` or the attachment labels.
 
 Two things the candidate page does on its own. It keeps a draft of whatever is being typed in the
 browser and restores it if the page is closed or crashes before the answer is submitted; nothing

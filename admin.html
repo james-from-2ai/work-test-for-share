@@ -35,6 +35,7 @@
   .ans-meta { margin-bottom: 0.5rem; }
   .ans-file { font-size: 0.85rem; margin: 0.4rem 0 0; padding: 0.35rem 0.5rem;
               border-left: 2px solid var(--warn); background: rgba(127,127,127,0.07); }
+  .ans-links { font-size: 0.85rem; margin: 0.3rem 0 0.4rem; padding-left: 1.4rem; word-break: break-all; }
   button.ghost { font: inherit; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 0.3rem 0.6rem; color: inherit; cursor: pointer; }
   button.ghost.danger { color: var(--danger); }
   td.acts { white-space: nowrap; }
@@ -272,6 +273,33 @@ function openCandidate(r, base) {
       }
     }
     sec.append(body);
+
+    if (Array.isArray(a.links) && a.links.length) {
+      const ul = document.createElement('ul');
+      ul.className = 'ans-links';
+      for (const l of a.links) {
+        const li = document.createElement('li');
+        // Candidate-supplied URLs. Only http(s) becomes a link, and it opens in a new tab with no
+        // referrer or opener, the same caution as a downloaded file: it came from outside.
+        if (/^https?:\/\/\S+$/i.test(l)) {
+          const anchor = document.createElement('a');
+          anchor.href = l;
+          anchor.target = '_blank';
+          anchor.rel = 'noopener noreferrer nofollow';
+          anchor.textContent = l;
+          li.append(anchor);
+        } else {
+          li.textContent = l;
+        }
+        ul.append(li);
+      }
+      const head = document.createElement('p');
+      head.className = 'ans-file';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Links: ';
+      head.append(strong, document.createTextNode('shared conversations the candidate gave us. They open in a new tab.'));
+      sec.append(head, ul);
+    }
 
     const files = Array.isArray(a.uploads) && a.uploads.length ? a.uploads : a.upload ? [a.upload] : [];
     for (const f of files) {

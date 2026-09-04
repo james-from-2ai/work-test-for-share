@@ -432,6 +432,35 @@ export function newToken() {
 const maxLengthOf = (q) => q.maxLength
   || (q.type === 'short' ? 300 : q.type === 'upload' ? 120 : 2000);
 
+/**
+ * A question can ask for web links alongside its answer (share links to AI conversations, say).
+ * Normalised here: the label and help an author wrote, a cap, and any documentation links to show,
+ * each checked to be an http(s) address because they become real hrefs on the page.
+ */
+const linksOf = (q) => {
+  if (!q || !q.links || typeof q.links !== 'object') return null;
+  const docs = (Array.isArray(q.links.docs) ? q.links.docs : [])
+    .filter((d) => d && /^https?:\/\/\S+$/i.test(String(d.url || '')))
+    .map((d) => ({ label: clamp(d.label, 120).trim() || String(d.url), url: String(d.url) }))
+    .slice(0, 6);
+  const max = Number.isInteger(q.links.max) && q.links.max > 0 ? Math.min(q.links.max, 20) : 10;
+  return {
+    prompt: clamp(q.links.prompt, 200).trim() || 'Links',
+    help: clamp(q.links.help, 900).trim() || null,
+    max,
+    docs,
+  };
+};
+
+/** Cleans a submitted list of links. Returns { links } or { bad } naming the first line that is not a URL. */
+const parseLinks = (raw, max) => {
+  const lines = (Array.isArray(raw) ? raw : String(raw == null ? '' : raw).split(/\r?\n/))
+    .map((l) => clamp(l, 500).trim())
+    .filter(Boolean);
+  for (const l of lines) if (!/^https?:\/\/\S+$/i.test(l)) return { bad: l };
+  return { links: [...new Set(lines)].slice(0, max) };
+};
+
 /** How many files a question takes: one unless the spec says more, and never more than ten. */
 const maxFilesOf = (q) => (Number.isInteger(q && q.maxFiles) && q.maxFiles > 1 ? Math.min(q.maxFiles, 10) : 1);
 
@@ -493,6 +522,8 @@ function publicQuestion(id, answers, cfg) {
     } : {}),
     // Author wording for the type-or-attach chooser, when the defaults do not fit the question.
     ...(q.modes && typeof q.modes === 'object' ? { modes: q.modes } : {}),
+    // A links field (share links to AI conversations, for instance), labelled by the author.
+    ...(linksOf(q) ? { links: linksOf(q) } : {}),
     maxLength: maxLengthOf(q),
     placeholder: q.placeholder || null,
     brief: q.brief ? cfg.briefs[q.brief] || null : null,
@@ -923,6 +954,16 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       // Text and file are checked against one requirement rather than two independent flags,
       // because 'either' is not expressible as a pair of them: neither half is required on its
       // own, but leaving both empty is not an answer.
+      // Links are optional and never stand in for the answer; they travel with it. A line that is
+      // not a web address is refused so a candidate can fix it, rather than quietly dropped.
+      let links;
+      const linkSpec = linksOf(q);
+      if (linkSpec) {
+        const parsed = parseLinks(body.links, linkSpec.max);
+        if (parsed.bad) return view(rec, now, cfg, { rejected: 'bad_link', badLink: parsed.bad });
+        links = parsed.links;
+      }
+
       const files = filesOf(rec, q.id);
       const hasFile = files.length > 0;
       const hasText = !richIsEmpty(value);
@@ -939,6 +980,8 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
           ...(choiceIndex === undefined ? {} : { choiceIndex }),
           ...(files.length ? { upload: files[0], uploads: files } : {}),
           ...(choice ? { choice } : {}),
+        ...(links && links.length ? { links } : {}),
+          ...(links && links.length ? { links } : {}),
           skipped: false,
           revisedAt: now,
           revisions: (previous.revisions || 0) + 1,
@@ -987,6 +1030,7 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         // admin page can read one row without cross-referencing anything.
         ...(files.length ? { upload: files[0], uploads: files } : {}),
         ...(choice ? { choice } : {}),
+        ...(links && links.length ? { links } : {}),
         // Lets the admin page and the CSV know how to read `value` without re-deriving it from
         // the question list, which may have been edited since this answer was written.
         format: rich ? 'rich' : 'text',
@@ -1101,6 +1145,7 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
           upload: a.upload || null,
           uploads: Array.isArray(a.uploads) ? a.uploads : a.upload ? [a.upload] : [],
           choice: a.choice || null,
+          links: Array.isArray(a.links) ? a.links : [],
           skipped: !!a.skipped,
         })),
       });
@@ -1331,7 +1376,8 @@ export function toCsv(rows) {
         // candidate chose survives into a spreadsheet cell.
         a.index + 1, a.id || '', a.prompt,
         a.skipped ? '(not reached: time ran out on this part)'
-          : `${a.choice ? `Recommended: ${a.choice}\n` : ''}${richToText(a.value)}`,
+          : `${a.choice ? `Recommended: ${a.choice}\n` : ''}${richToText(a.value)}`
+            + (Array.isArray(a.links) && a.links.length ? `\nLinks:\n${a.links.join('\n')}` : ''),
         (a.uploads || (a.upload ? [a.upload] : [])).map((f) => f.filename).join('; '),
         (a.uploads || (a.upload ? [a.upload] : [])).length
           ? Math.round((a.uploads || [a.upload]).reduce((n, f) => n + (f.size || 0), 0) / 1000) : '',

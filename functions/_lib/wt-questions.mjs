@@ -895,12 +895,9 @@ export const BRIEFS = {
         },
         {
           "type": "note",
-          "title": "Your transcripts, if you used AI",
           "items": [
-            "Attach each conversation you used as a PDF, one per conversation, up to 8 files. This is required if you used AI: we read the transcripts alongside your answers.",
-            "To save a conversation as a PDF: open it in ChatGPT, Claude, Gemini or whichever tool you used, press Ctrl+P (Cmd+P on a Mac), choose \"Save as PDF\" as the destination, and save.",
-            "If your tool offers a share link for the conversation, you can paste the links into the box instead.",
-            "If you did not use AI at all, say so in the box and attach nothing."
+            "Below the box, share the conversations you used: a public share link for each one (preferred), or a PDF if a link is not possible. This is required if you used AI.",
+            "If you did not use AI at all, say so in the box and leave the link and file sections empty."
           ]
         }
       ]
@@ -996,10 +993,25 @@ export const QUESTIONS = [
       ],
       "maxFiles": 8,
       "prompt": "How did you use AI in this exercise?",
-      "context": "Cover the three points above in the box. A few short paragraphs or bullet points is fine. Then attach your transcripts below. This is the last question: submitting it completes the exercise.",
-      "attachmentPrompt": "Your AI transcripts (required if you used AI)",
-      "attachmentHelp": "One PDF per conversation, up to 8 files, each up to 4.5 MB. Save each conversation with Ctrl+P or Cmd+P and choose Save as PDF. If you did not use AI, attach nothing.",
+      "context": "Cover the three points above in the box, then share the conversations you used below. This is the last question: submitting it completes the exercise.",
+      "attachmentPrompt": "Or attach transcript PDFs",
+      "attachmentHelp": "If a share link is not possible, save each conversation as a PDF: open it, press Ctrl+P (Cmd+P on a Mac), and choose Save as PDF. One PDF per conversation, up to 8 files, each up to 4.5 MB.",
       "maxLength": 4000,
-      "next": null
+      "next": null,
+      "links": {
+        "prompt": "Share links to your AI conversations (preferred)",
+        "help": "For each conversation you used, create a public share link and paste it here, one per line. In Claude: open the chat, click Share, set the visibility to Public, and copy the link. In ChatGPT: click the share button at the top right of the chat (or share it from the sidebar), create the link, and copy it. Links made in a ChatGPT Business, Enterprise or Edu workspace only open for members of that workspace, so use the PDF option below if that is you.",
+        "max": 10,
+        "docs": [
+          {
+            "label": "Sharing a Claude chat (Anthropic help)",
+            "url": "https://support.claude.com/en/articles/10593882-share-and-unshare-chats"
+          },
+          {
+            "label": "Sharing a ChatGPT conversation (OpenAI help)",
+            "url": "https://help.openai.com/en/articles/7925741-chatgpt-shared-links"
+          }
+        ]
+      }
     }
   ];

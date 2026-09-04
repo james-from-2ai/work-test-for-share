@@ -103,6 +103,7 @@ const REJECTIONS = {
   not_an_upload: 'This question does not take a file.',
   no_choice: 'Select one option to continue.',
   too_many_files: 'This question already has as many files as it takes.',
+  bad_link: 'One of the links is not a web address. Each line should be one link starting with https://.',
 };
 
 /* ---------------------------------------------------------------------- drafts ------- */
@@ -147,6 +148,7 @@ function clearDraft(qid) {
   try {
     localStorage.removeItem(draftKey(qid));
     localStorage.removeItem(`${draftKey(qid)}:mode`);
+    localStorage.removeItem(`${draftKey(qid)}:links`);
   } catch { /* nothing to clear */ }
 }
 
@@ -1141,6 +1143,7 @@ function renderQuestion(state) {
   let over = false;
   let attachment = null;
   let focusEditor = null;
+  let readLinks = () => [];
   const refreshNext = () => { next.disabled = over || (attachment ? attachment.busy() : false); };
 
   // Drafts are for the question being answered, never for one being looked back at: there the
@@ -1315,6 +1318,72 @@ function renderQuestion(state) {
     read = () => input.value.trim();
   }
 
+  /**
+   * Share links, when the question asks for them: a labelled section under the answer with the
+   * author's help text and any documentation links, then one link per line. Kept as its own field
+   * rather than "paste them into the box" so they can be checked, listed and clicked on later.
+   */
+  if (q.links && !past) {
+    const wrap = document.createElement('div');
+    wrap.className = 'links-wrap';
+    const lbl = document.createElement('p');
+    lbl.className = 'part-label';
+    lbl.textContent = q.links.prompt;
+    wrap.append(lbl);
+    if (q.links.help) {
+      const help = document.createElement('p');
+      help.className = 'part-help';
+      help.textContent = q.links.help;
+      wrap.append(help);
+    }
+    if (Array.isArray(q.links.docs) && q.links.docs.length) {
+      const docs = document.createElement('p');
+      docs.className = 'part-help part-docs';
+      docs.append(document.createTextNode('How to: '));
+      q.links.docs.forEach((d, i) => {
+        if (!/^https?:\/\//i.test(d.url)) return;
+        if (i) docs.append(document.createTextNode(' · '));
+        const a = document.createElement('a');
+        a.href = d.url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = d.label;
+        docs.append(a);
+      });
+      wrap.append(docs);
+    }
+    const ta = document.createElement('textarea');
+    ta.className = 'links-input';
+    ta.rows = 3;
+    ta.placeholder = 'https://…  (one link per line)';
+    ta.spellcheck = false;
+    ta.autocomplete = 'off';
+    const linksKey = `${draftKey(q.id)}:links`;
+    try { const saved = localStorage.getItem(linksKey); if (saved) ta.value = saved; } catch { /* fine */ }
+    ta.addEventListener('input', () => {
+      try { if (ta.value.trim()) localStorage.setItem(linksKey, ta.value); else localStorage.removeItem(linksKey); } catch { /* fine */ }
+      showError('');
+    });
+    wrap.append(ta);
+    field.append(wrap);
+    readLinks = () => ta.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  } else if (q.links && past) {
+    const given = state.given && Array.isArray(state.given.links) ? state.given.links : [];
+    if (given.length) {
+      const lbl = document.createElement('p');
+      lbl.className = 'part-label';
+      lbl.textContent = q.links.prompt;
+      const ul = document.createElement('ul');
+      ul.className = 'files-list';
+      for (const l of given) {
+        const li = document.createElement('li');
+        li.textContent = l;
+        ul.append(li);
+      }
+      field.append(lbl, ul);
+    }
+  }
+
   if (q.attachment && q.attachment !== 'none') {
     // When the file part is a section of its own (say, transcripts under a written disclosure),
     // it gets its own label and help text, so nobody mistakes it for an alternative to the box.
@@ -1425,6 +1494,8 @@ function renderQuestion(state) {
     const textPart = q.type === 'decision' ? (answer && answer.text) : answer;
     const hasText = !isBlank(textPart);
     if (q.type === 'decision' && !(answer && Number.isInteger(answer.option))) return REJECTIONS.no_choice;
+    if (q.links && readLinks().some((l) => !/^https?:\/\/\S+$/i.test(l))) return REJECTIONS.bad_link;
+    if (q.links && readLinks().length > q.links.max) return `Up to ${q.links.max} links here. Attach the rest as PDFs.`;
     const blankMsg = q.type === 'choice' ? 'Choose one option to continue.'
       : canRevise ? 'Write something to continue.'
       : 'Write something to continue. You cannot come back to this question, so if you are short of time, say what you would have done instead.';
@@ -1502,7 +1573,10 @@ function renderQuestion(state) {
     inFlight = true;
     next.disabled = true;
     next.textContent = 'Saving…';
-    const res = await api('answer', { index: q.index, questionId: q.id, value, confirmDiscard, ...signals });
+    const res = await api('answer', {
+      index: q.index, questionId: q.id, value, confirmDiscard, ...signals,
+      ...(q.links ? { links: readLinks() } : {}),
+    });
     inFlight = false;
 
     if (isTransient(res)) {
@@ -1721,6 +1795,22 @@ async function openReview() {
       blank: a.skipped ? 'Not reached: the time for this part ran out.' : files.length ? null : '(left blank)',
     });
     for (const f of files) body.append(fileLine(f));
+    if (Array.isArray(a.links) && a.links.length) {
+      const lbl = document.createElement('p');
+      lbl.className = 'review-choice';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Links: ';
+      lbl.append(strong);
+      body.append(lbl);
+      const ul = document.createElement('ul');
+      ul.className = 'files-list';
+      for (const l of a.links) {
+        const li = document.createElement('li');
+        li.textContent = l;
+        ul.append(li);
+      }
+      body.append(ul);
+    }
     wrap.append(q, body);
     dlg.append(wrap);
   }
