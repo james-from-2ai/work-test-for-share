@@ -1,9 +1,9 @@
 # Cloudflare Pages response headers.
 #
-# This site is deliberately public, so unlike the internal copy there is no Access gate behind
-# these. They are what stops a demo of a hiring assessment turning up in search results, which
-# would be a problem for the test itself: the questions are meant to be unseen before a candidate
-# opens them.
+# The candidate-facing pages are reachable by anyone holding a link, so unlike the internal copy
+# there is no Access gate behind these. They are what stops a hiring assessment turning up in
+# search results, which would be a problem for the test itself: the materials are meant to be
+# unseen before a candidate opens them.
 
 # The CSP is worth having precisely because this deployment is public. Everything the pages need
 # is served from this origin, so `default-src 'none'` with a short allowlist costs nothing and

@@ -33,22 +33,6 @@
 
 * { box-sizing: border-box; }
 
-/* Public demo banner. Deliberately unmissable: this instance has no password, so anyone landing
-   here has to understand that what they type is readable by anyone else with the link. */
-.demo-banner {
-  padding: 0.7rem 1.25rem;
-  font-size: 0.88rem;
-  line-height: 1.5;
-  text-align: center;
-  color: #4a2c00;
-  background: #ffe9c2;
-  border-bottom: 1px solid #e0a45c;
-}
-.demo-banner strong { font-weight: 700; }
-@media (prefers-color-scheme: dark) {
-  .demo-banner { color: #ffe0b0; background: #40300f; border-bottom-color: #7a5a1c; }
-}
-
 body {
   margin: 0;
   background: var(--bg);
@@ -187,7 +171,31 @@ p { margin: 0 0 0.9rem; }
   color: var(--muted);
   margin: 0 0 0.7rem;
 }
-.brief p { margin: 0 0 0.75rem; }
+/* pre-line, so a multi-paragraph memo written with blank lines in the builder reads as
+   paragraphs rather than collapsing into one block. */
+.brief p { margin: 0 0 0.75rem; white-space: pre-line; }
+.brief-sub {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 1.1rem 0 0.45rem;
+}
+.brief-sub:first-of-type { margin-top: 0.2rem; }
+.brief ul { margin: 0 0 0.75rem; padding-left: 1.25rem; }
+.brief ul li { margin-bottom: 0.3rem; }
+.brief-table { overflow-x: auto; margin: 0 0 0.85rem; }
+.brief-table table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+.brief-table th, .brief-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.35rem 0.55rem;
+  border-bottom: 1px solid var(--line);
+}
+.brief-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
 
 .quote {
   margin: 0 0 0.85rem;

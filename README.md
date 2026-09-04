@@ -1,202 +1,235 @@
-# 2AI work test, public demo
+# Evidence Action EVP work test
 
-A deployable copy of the timed work test with **no password**, for showing people outside 2AI how
-it works. The test is at `/` and the results board at `/admin.html`.
+The take-home exercise for the **Executive Vice President, Evidence** role at Evidence Action,
+"MMS Nigeria: The Expansion Gate", served as a hosted, two-stage work test. Candidates open a
+link, read the Stage 1 packet, submit their response (written or as a PDF or Word document),
+select the option they recommend, and are routed to one of three Stage 2 paths. Stage 2 is not
+visible until Stage 1 is submitted, and Stage 1 cannot be changed afterwards.
 
-The internal, real version lives in the `master-mega-badass-site` repo under `work-test/`, behind
-Cloudflare Access. This is a snapshot of it, configured for a public audience.
+The test is at `/`, the results board at `/admin.html`, and the authoring tool at `/builder.html`.
 
-## What makes this copy safe to publish
+## Three tests, three deployments, three tables
 
-Three things, and all three matter:
+This repo started as the public demo of the 2AI PM work test and now carries the EVP test on its
+own branch. Keep the three apart:
 
-- **It writes to a different Airtable table.** `functions/_lib/wt-store.mjs` defaults to
-  `Work Test Sessions (Demo)` (`tbl6PEZ6JQGtolN9N`), not the real one. Real candidates' names,
-  emails, and answers are in a separate table this deployment never reads. Do not change that
-  default.
-- **This repo contains no confidential data.** That is why the demo cannot simply be the existing
-  site with the gate removed: that site serves `/data/*.json` with real donor names and amounts
-  from the same hostname.
-- **Nothing here is a secret.** The admin key for a public demo is not protecting anything, since
-  the only data behind it is demo data. Pick something short, and expect it to be shared.
+| Deployment | Repo and branch | Airtable table | Who can reach it |
+| --- | --- | --- | --- |
+| 2AI PM test, internal | `master-mega-badass-site`, `work-test/` | `Work Test Sessions` | 2AI staff, behind Cloudflare Access |
+| Public demo | this repo, `main` | `Work Test Sessions (Demo)` | anyone; demo data only |
+| **EVP test** | **this repo, the EVP branch** | **`Work Test Sessions (EVP)`** | candidates with a link; admin by key |
 
-Everything a visitor types goes into a table anyone else with the link can read, which the banner
-on every page says outright.
+`functions/_lib/wt-store.mjs` on the EVP branch defaults to the EVP table (`tblGlPl5hThtcGkTu`).
+That default is the single most important line in the repo: it is what keeps real candidates'
+names, emails, answers and files out of the demo table that anyone holding the demo link can read.
+Do not merge the EVP branch into `main`, and do not point the demo at this table.
 
-## Deploying it
+## Deploying the EVP test
 
-You need a **new Cloudflare Pages project**, separate from `master-mega-badass-site`.
+You need a **new Cloudflare Pages project**, separate from the demo and from the internal site.
 
-1. Push this folder to its own repo, public or private, it makes no difference to the result.
-2. Cloudflare: **Workers & Pages > Create > Pages > Connect to Git**, pointing at that repo.
+1. Push the EVP branch to GitHub (this repo is private, which is where a live hiring assessment
+   belongs).
+2. Cloudflare: **Workers & Pages > Create > Pages > Connect to Git**, pick this repo, and set the
+   **production branch** to the EVP branch, not `main`. Project name
+   `evidence-action-evp-work-test` gives `https://evidence-action-evp-work-test.pages.dev`.
    Leave the build command **empty** and the output directory `/`.
 3. **Settings > Variables and secrets**, all on Production:
 
    | Name | Type | Value | Why |
    | --- | --- | --- | --- |
-   | `AIRTABLE_TOKEN` | Secret | the same PAT the internal site uses | Needs `data.records:read` and `data.records:write` on base `app3qxyas11wjYIhe` |
-   | `ADMIN_KEY` | Secret | something short, e.g. `demo` | Not protecting anything here; you will put it in the link |
-   | `ALLOW_SELF_RESET` | Text | `on` | So visitors can retry without asking you |
-   | `DURATION_SEC` | Text | `900` | 15 minutes, so a demo does not need 90 |
+   | `AIRTABLE_TOKEN` | Secret | the PAT the internal site uses | Needs `data.records:read` and `data.records:write` on base `app3qxyas11wjYIhe` |
+   | `ADMIN_KEY` | Secret | a long random string, 32+ characters | The only thing between the internet and every candidate's answers. Never put it in a link. |
+   | `OPEN_REGISTRATION` | Text | `off` | Only links issued from `/admin.html` work. Without this, anyone who finds the hostname can register and read the packet. |
+   | `ALLOW_SELF_RESET` | leave unset | | It lets a candidate wipe and restart their own session. Internal testing only. |
+   | `DURATION_SEC` | leave unset | | The test is untimed by design. Setting this does nothing useful on an untimed test. |
 
-4. **Do not add a Cloudflare Access application.** That is the entire point of this copy.
-5. Deploy, then **redeploy once** after saving the variables. Pages does not apply variable
+4. Deploy, then **redeploy once** after saving the variables. Pages does not apply variable
    changes to a deployment that already exists.
+5. **Put Cloudflare Access in front of the admin paths.** Zero Trust > Access > Applications >
+   Self-hosted, with two paths on the project's hostname: `/admin.html` and
+   `/api/work-test-admin`. Allow Evidence Action and 2AI accounts. Leave `/` and `/api/work-test`
+   out of the policy: external candidates have to reach them. The admin key is still required
+   behind Access; this is a second layer, not a replacement.
+6. **Custom domain** (optional): Pages project > Custom domains > Set up a custom domain, for
+   example `evp-work-test.evidenceaction.org`. The zone has to be on Cloudflare DNS; Pages adds
+   the CNAME for you. Until then the `.pages.dev` address works and carries the same headers.
 
-## The two links to send
+Then open `/admin.html`, paste the admin key, and issue a link per candidate.
 
-Once it is live at `https://<project>.pages.dev`:
+## Issuing links and reading results
 
-- **Take the test:** `https://<project>.pages.dev/`
-- **See the results board:** `https://<project>.pages.dev/admin.html?k=demo`
+- **Issue links** on `/admin.html`: one candidate per line as `Name, email@example.com`. Each gets
+  a single-use link. Send it yourself; nothing is emailed from here.
+- **Only a candidate's first submission counts**, keyed on their email. Deleting a candidate's
+  row (Reset on the admin page, or delete the Airtable row) is how you grant a retake.
+- **Files** land in the `Files` attachment column of the candidate's Airtable row, named with the
+  question id. Download them rather than previewing: they came from outside.
+- **CSV** from the admin page carries every answer, the route taken, time on each question, and
+  file names and sizes.
 
-The `?k=` prefills the admin key and loads immediately, so the person you send it to does not
-have to be told what to paste where. It clears itself out of the address bar on arrival. Use it
-only with a throwaway key like this one, never with the key guarding real answers.
+## What the test does
 
-## Keeping it in step with the real one
+- **Untimed.** The source exercise says "please use the time you need" and estimates about 4
+  hours across both stages (2 to 3 for Stage 1, 60 to 90 minutes for Stage 2). The progress bar
+  shows those estimates; nothing counts down and nothing expires. Submitted answers are saved on
+  the server, so a candidate can close the page and return to the same link.
+- **Gated and branching.** Stage 1 is one response (text or file), an optional attachment of AI
+  prompts or transcripts, and the choice of Option 1, 2 or 3. That choice routes to Path A, B or
+  C for Stage 2, which is one response plus an optional AI attachment. A candidate never sees the
+  destination of an option before choosing it.
+- **Look back, not change.** Candidates can re-read their Stage 1 submission while working on
+  Stage 2, since the memo they are answering refers to it. They cannot edit it.
+- **Text or file.** Every response question accepts either a written answer or a PDF or Word
+  document, up to 4.5 MB. A PDF is verified byte by byte; a `.docx` only as far as "a zip named
+  .docx". Google Docs have to be downloaded as PDF or Word first, and the instructions say so.
+- **AI use is allowed** and a disclosure paragraph is required at the end of each response,
+  exactly as the source document asks.
 
-This is a snapshot, so it drifts. To refresh it, copy these from `master-mega-badass-site` and
-redo the three edits below:
+## Changing the test
 
-| From | To |
-| --- | --- |
-| `work-test/index.html`, `admin.html`, `assets/*` | repo root |
-| `work-test/tools/*` | `tools/` |
-| `functions/_lib/wt-*.mjs`, `functions/api/work-test*.js` | same paths |
+The test is `tools/evp-spec.json`. `functions/_lib/wt-questions.mjs` is **generated** from it and
+is overwritten on the next run, so edit the spec, not the generated file.
 
-The three differences to reapply, all deliberate:
+```bash
+node tools/dev-server.mjs --spec=tools/evp-spec.json   # try it locally, admin key "dev"
+node tools/spec-apply.mjs tools/evp-spec.json          # write it into the questions file
+node --test tools/*.test.mjs                           # 170+ tests
+git diff                                               # read what changed, then commit and deploy
+```
 
-1. `wt-store.mjs` points at the **demo** table.
-2. `TEST_PATH` is `/` rather than `/work-test/`, in `work-test-admin.js` and `tools/dev-server.mjs`.
-3. `index.html` and `admin.html` carry the demo banner, and the test imports are one level
-   shallower.
+Or open `/builder.html` (locally or on the deployed site), load `tools/evp-spec.json` from the
+Load example menu, edit, download the spec, and run `spec-apply` on it. The builder cannot
+publish, on purpose: shipping is a reviewed commit.
+
+**Do not edit the flow while a candidate is mid-test.** The route is derived from the spec on
+every request, so changing which question follows which can move where a sitting candidate's
+next answer lands. Wording changes are safe.
+
+Two things to know about text lengths. Rich answers are capped per question (24,000 characters
+for the Stage 1 response, 12,000 for Stage 2, 6,000 for each AI attachment question), and a
+candidate's whole session has to fit in one Airtable long-text cell, so a very long typed response
+is refused with a message rather than silently truncated. The instructions steer long or
+table-heavy responses towards attaching a file, which has no such limit below 4.5 MB.
 
 ## What a test can be set to do
 
 Six things, all set in the builder, all defaulting to what this engine has always done so a spec
 that says nothing behaves exactly as every earlier one did.
 
-| Setting | Options | Default |
-| --- | --- | --- |
-| **Time** | one clock for the whole test, a clock per part, or untimed | one clock |
-| **Going back** | not at all, look but not change, or go back and change | not at all |
-| **Pasting** | allowed or blocked, per test or per question | allowed |
-| **What they submit** | writing, a file, either one, both, or nothing | writing |
-| **File types** | PDF, Word, or both | both |
-| **Branching** | any multiple choice can send each option somewhere different | none |
-
-Two of these deserve more than a table row.
+| Setting | Options | Default | EVP test |
+| --- | --- | --- | --- |
+| **Time** | one clock for the whole test, a clock per part, or untimed | one clock | untimed |
+| **Going back** | not at all, look but not change, or go back and change | not at all | look but not change |
+| **Pasting** | allowed or blocked, per test or per question | allowed | allowed |
+| **What they submit** | writing, a file, either one, both, or nothing | writing | either |
+| **File types** | PDF, Word, or both | both | both |
+| **Branching** | any multiple choice can send each option somewhere different | none | 3 paths |
 
 **A clock per part does not end the sitting.** When a part's time runs out, its unanswered
 questions are recorded as *not reached* and the candidate moves into the next part on a fresh
-clock. That is the point of per-part limits: to stop one part eating another, not to end the
-sitting early. A part with no limit set is untimed, so set all of them or use one clock.
+clock. A part with no limit set is untimed, so set all of them or use one clock.
 
 **Letting candidates change their answers changes what the test measures.** Forward-only asks
-what their judgment is with what they have in front of them; revisable asks something else. It is
-not a presentation choice, which is why the builder says so on the card rather than in a tooltip.
-If a revision changes a branch, the answers after it are discarded, because they belong to a route
-the candidate is no longer on. The server refuses once and says how many, and destroys nothing
-until told to.
+what their judgment is with what they have in front of them; revisable asks something else. If a
+revision changes a branch, the answers after it are discarded, because they belong to a route the
+candidate is no longer on. The server refuses once and says how many, and destroys nothing until
+told to.
 
 ## Writing a test without touching code
 
 `/builder.html` is the authoring tool. Someone who does not write code can build a whole test in
 it: the questions, the options and where each one branches to, the parts and their recommended
-minutes, and the scenario briefs. Four panels sit alongside the editor:
+minutes, and the reference briefs. Four panels sit alongside the editor:
 
 - **Branch map**, drawing every route, labelled with the option that takes it. A branch pointing
-  at a question that does not exist is drawn in red, which is the mistake worth catching early:
-  it is otherwise invisible until a candidate walks into it, on a clock.
+  at a question that does not exist is drawn in red.
 - **Walk it through**, clicking the draft the way a candidate would, using the same routing code
   the server runs.
-- **Live preview**, the real candidate page running this draft, in a frame. One click hands the
-  draft to the local dev server and reloads the page against it, clock, branching and file checks
-  included. It needs the dev server: the deployed site has no `/api/dev-spec`, deliberately, so
-  nothing in production can swap the running test out from under a sitting.
+- **Live preview**, the real candidate page running this draft, in a frame. It needs the local
+  dev server: the deployed site has no `/api/dev-spec`, deliberately, so nothing in production
+  can swap the running test out from under a sitting.
 - **Problems**, updated as you type.
 - **Spec file**, which is what you download.
 
-Two things the candidate page does on its own that are worth knowing about. It keeps a draft of
-whatever is being typed in the browser, and restores it if the page is closed or crashes before the
-answer is submitted; nothing about a draft ever reaches the server. And the last question asks
-once before it goes, since on a forward-only test that is the one click with no way back from it.
+Briefs are the reference material that stays on screen for every question in a part. Block types:
+paragraph, subheading, bullet list, table (a header row plus data rows), quoted message (a memo,
+Slack or email, with a label and optional numbered points), and a link button out to data. Blank
+lines inside a paragraph or a quoted message render as paragraph breaks, which is how the Stage 2
+memos are written.
 
-The builder **cannot publish**, on purpose. It has no password, and what it would be publishing is
-a live hiring assessment. Shipping is a reviewed diff instead:
+Two things the candidate page does on its own. It keeps a draft of whatever is being typed in the
+browser and restores it if the page is closed or crashes before the answer is submitted; nothing
+about a draft ever reaches the server. And the last question asks once before it goes.
 
-```bash
-node tools/dev-server.mjs --spec=work-test-spec.json   # try the draft for real
-node tools/spec-apply.mjs work-test-spec.json          # write it into the questions file
-git diff                                               # read what changed, then commit and deploy
-```
-
-`tools/spec-export.mjs` goes the other way, turning the test that is currently live back into a
-spec so it can be opened in the builder rather than retyped. Anything that has to survive a
+`tools/spec-export.mjs` turns the compiled test back into a spec. Anything that has to survive a
 regeneration, above all where the task came from, belongs in the spec's `notes` field: it is
 written into the header of the generated file, and everything else in that file is overwritten.
 
 ## Branching
 
-A question falls through to the next one in the list unless it says otherwise, so a test with no
-branching behaves exactly as a flat list does. `next: 'some_id'` jumps, `next: null` ends the
-test, and each option on a multiple choice can carry its own `next`.
+A question falls through to the next one in the list unless it says otherwise. `next: 'some_id'`
+jumps, `next: null` ends the test, and each option on a multiple choice can carry its own `next`.
 
-Three things follow from that, and they are worth knowing before wiring one:
-
-- **An option never reveals where it leads.** Destinations are stripped server-side, so choosing
-  is not also a preview of what each choice costs.
+- **An option never reveals where it leads.** Destinations are stripped server-side.
 - **Where routes differ in length there is no total**, so a candidate sees "Question 3" rather
-  than "Question 3 of 6". Keep every route the same length if you want the count back.
-- **Do not edit the flow while somebody is sitting the test.** The route is derived from the spec
-  on every request, which is what keeps sessions and spec from ever disagreeing, but it means a
-  change mid-sitting can move where that candidate's next answer lands.
+  than "Question 3 of 6". The EVP routes are all the same length, so the count shows.
+- **Do not edit the flow while somebody is sitting the test.** See above.
 
 ## File uploads
 
-A question of type `upload` takes one PDF or Word document, up to 4.5 MB, and asks the candidate
-to give it a short name so a reviewer can tell what it is. For a second attachment, add a second
-upload question.
+A question with `require` set to `file`, `either` or `both` takes one PDF or Word document, up to
+4.5 MB. For a second attachment, add a second question, which is what the AI documentation
+questions are.
 
-The file is stored the moment it is chosen, not when the answer is submitted, so attaching
-something near the buzzer cannot be the thing that loses it.
+The file is stored the moment it is chosen, not when the answer is submitted.
 
-**Uploads need the Airtable backend.** Add an **Attachment** column named `Files` to the sessions
-table (or set `AIRTABLE_WT_FILES` to another name); Airtable will not create one on demand. A test
-with an upload question refuses to start on a store that cannot hold files, rather than failing on
-one candidate mid-sitting. The 4.5 MB cap is Airtable's 5 MB upload limit with headroom.
+**Uploads need the Airtable backend** and an **Attachment** column named `Files` on the sessions
+table (or set `AIRTABLE_WT_FILES` to another name). The EVP table has one. A test with an upload
+question refuses to start on a store that cannot hold files, rather than failing on one candidate
+mid-sitting. The 4.5 MB cap is Airtable's 5 MB upload limit with headroom.
 
-What the type check does and does not prove, because the difference matters:
+What the type check does and does not prove:
 
 - **A PDF is verified properly**, byte by byte. A file renamed to `.pdf` is refused.
 - **A `.docx` is not.** It is a ZIP, so the check establishes "a zip archive, named .docx, with a
-  matching content type" and no more. Proving it is a real Word document means opening the
-  archive, which is more than belongs in a request on a candidate's clock.
+  matching content type" and no more.
 
 Either way this stops ordinary mistakes, not someone acting in bad faith. **A hostile PDF is a
-risk to whoever opens it**, and nothing in this repo changes that. The admin page links to the
-Airtable row and says to download rather than preview.
+risk to whoever opens it.** The admin page says to download rather than preview.
 
 ## Running it locally
 
 ```bash
-node tools/dev-server.mjs --duration=120
+node tools/dev-server.mjs
 ```
 
 Then `http://localhost:8788/`, admin at `/admin.html` with key `dev`, builder at `/builder.html`.
-Add `--port=8899` if that port is busy, and `--spec=file.json` to run a draft. Two examples ship
-with the repo: `tools/evp-demo-spec.json` is the gated two-part shape with three Part 2 variants
-and a closing question about AI use, and `tools/example-branching-spec.json` is a smaller one. Uploads are written
-to `tools/.dev-uploads/`, which is gitignored. Tests:
+Add `--port=8899` if that port is busy, `--spec=file.json` to run a draft, and `--duration=120`
+to shorten the clock on a timed spec. Uploads are written to `tools/.dev-uploads/`, which is
+gitignored, and sessions to `tools/.dev-store.json`; delete either to reset.
 
 ```bash
 node --test tools/*.test.mjs
 ```
 
-The suites are worth knowing by name. `engine` covers the guarantees that hold whatever the
-settings are; `flow` covers branching; `options` covers everything that is a setting (timing,
-going back, what counts as an answer, and the instructions and closing screens that describe
-them); `files` covers uploads; `airtable` covers the store; and `tooling` compiles what
-`spec-apply` generates, because a generator whose output is source code needs its output
-compiled or the first sign of trouble is a deploy that will not build.
+The suites by name: `engine` covers the guarantees that hold whatever the settings are, driven
+against the PM test kept as a fixture in `tools/fixtures/pm-test.mjs`; `flow` covers branching;
+`options` covers everything that is a setting; `files` covers uploads; `airtable` covers the
+store; and `tooling` compiles what the builder produces and exercises the dev server.
+
+## Keeping the engine in step with the internal copy
+
+The engine, client and tools are shared with the 2AI PM test in `master-mega-badass-site`. To pull
+a fix across, copy these and redo the EVP-specific edits:
+
+| From | To |
+| --- | --- |
+| `work-test/index.html`, `admin.html`, `builder.html`, `assets/*` | repo root |
+| `work-test/tools/*` | `tools/` |
+| `functions/_lib/wt-*.mjs`, `functions/api/work-test*.js` | same paths |
+
+The EVP-specific edits, all deliberate: `wt-store.mjs` points at the EVP table; `TEST_PATH` is
+`/`; `index.html` and `admin.html` carry the Evidence Action wording and no demo banner;
+`admin.html` does not accept the key from `?k=`; and `wt-questions.mjs` is generated from
+`tools/evp-spec.json`.

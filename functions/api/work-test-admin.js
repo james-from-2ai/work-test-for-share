@@ -11,12 +11,12 @@
  *   There is no Cloudflare Access in front of this hostname, so this endpoint is reachable from
  *   anywhere and the key is the whole of the defence.
  *
- * That is acceptable only because what sits behind it is demo data, and three separate things
- * depend on it staying that way: wt-store.mjs points at the demo Airtable table, admin.html
- * accepts the key from a `?k=` query string and so leaks it into browser history, and README.md
- * tells deployers to pick a short throwaway key. None of the three is safe with real candidates'
- * answers behind it. If you need that, use the copy in master-mega-badass-site, which is gated
- * by Cloudflare Access.
+ * What sits behind it is real: candidates' names, emails, answers and files for the Evidence
+ * Action EVP hire. So the key has to be long and random, it must never appear in a URL (the
+ * public demo's `?k=` prefill is removed from admin.html for that reason), and README.md tells
+ * deployers to put a Cloudflare Access policy in front of /admin.html and /api/work-test-admin
+ * as a second layer. Access on those two paths leaves the candidate-facing test open, which is
+ * what external candidates need.
  *
  * Cloudflare environment variables (Pages project > Settings > Variables and secrets):
  *   ADMIN_KEY - REQUIRED, type Secret. Any long random string. Whoever holds it can read every
@@ -31,9 +31,9 @@ import { json, readJson, secretEquals } from '../_lib/wt-kv.mjs';
 const TEST_PATH = '/';
 
 export async function onRequestPost({ request, env }) {
-  // Authenticate BEFORE reporting anything about configuration. This copy of the code also runs
-  // on a public demo with no Access gate in front of it, where an anonymous visitor should learn
-  // nothing beyond "wrong key", not which variables the deployment is missing.
+  // Authenticate BEFORE reporting anything about configuration. This hostname is reachable by
+  // anyone, and an anonymous visitor should learn nothing beyond "wrong key", not which
+  // variables the deployment is missing.
   const supplied = request.headers.get('x-admin-key') || '';
 
   /**

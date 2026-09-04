@@ -66,6 +66,16 @@ export function config(overrides = {}) {
   // or space that nobody can see in the dashboard. Comparing raw strings would then silently
   // ignore the setting, which for OPEN_REGISTRATION would fail OPEN. Trim and lowercase first.
   const flag = (v) => String(v ?? '').trim().toLowerCase();
+  // A whole test handed in as overrides (the dev server running a draft, the builder's preview,
+  // the test suites) gets the engine's documented defaults for anything it leaves out, not the
+  // compiled test's settings. Otherwise a draft that says nothing about timing would silently
+  // inherit whatever the live test happens to use, and a spec that "says nothing" would mean
+  // different things on different deployments. Production passes no questions, so it still
+  // reads everything from the compiled module.
+  const fromSpec = Array.isArray(overrides.questions) && overrides.questions.length > 0;
+  const base = fromSpec
+    ? { timing: { mode: 'total' }, navigation: { back: false, edit: false }, integrity: { blockPaste: false }, intro: {}, outro: {}, briefs: {} }
+    : { timing: TIMING, navigation: NAVIGATION, integrity: INTEGRITY, intro: INTRO || {}, outro: OUTRO || {}, briefs: BRIEFS };
   return {
     durationSec: Number.isFinite(d) && d > 0 ? Math.floor(d) : DURATION_SEC,
     graceSec: Number.isFinite(g) && g >= 0 ? Math.floor(g) : GRACE_SEC,
@@ -90,21 +100,21 @@ export function config(overrides = {}) {
     sections: Array.isArray(overrides.sections) && overrides.sections.length
       ? overrides.sections
       : SECTIONS,
-    briefs: overrides.briefs && typeof overrides.briefs === 'object' ? overrides.briefs : BRIEFS,
-    timing: normalizeTiming({ timing: TIMING, ...overrides }, sectionList(overrides)),
+    briefs: overrides.briefs && typeof overrides.briefs === 'object' ? overrides.briefs : base.briefs,
+    timing: normalizeTiming({ timing: base.timing, ...overrides }, sectionList(overrides)),
     // Both default to false, so a spec that says nothing behaves exactly as every earlier one
     // did. Neither is a UI preference: see the note at the top of this file.
     navigation: {
-      back: (overrides.navigation || NAVIGATION).back === true,
-      edit: (overrides.navigation || NAVIGATION).edit === true,
+      back: (overrides.navigation || base.navigation).back === true,
+      edit: (overrides.navigation || base.navigation).edit === true,
     },
     integrity: {
       blockPaste: overrides.integrity
         ? overrides.integrity.blockPaste === true
-        : INTEGRITY.blockPaste === true,
+        : base.integrity.blockPaste === true,
     },
-    intro: overrides.intro && typeof overrides.intro === 'object' ? overrides.intro : (INTRO || {}),
-    outro: overrides.outro && typeof overrides.outro === 'object' ? overrides.outro : (OUTRO || {}),
+    intro: overrides.intro && typeof overrides.intro === 'object' ? overrides.intro : base.intro,
+    outro: overrides.outro && typeof overrides.outro === 'object' ? overrides.outro : base.outro,
   };
 }
 

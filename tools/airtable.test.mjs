@@ -15,8 +15,24 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { airtableStore } from '../functions/_lib/wt-airtable.mjs';
-import { handle, createCandidates, listCandidates } from '../functions/_lib/wt-engine.mjs';
-import { QUESTIONS } from '../functions/_lib/wt-questions.mjs';
+import {
+  handle as engineHandle, createCandidates, listCandidates as engineListCandidates, config as engineConfig,
+} from '../functions/_lib/wt-engine.mjs';
+import {
+  DURATION_SEC, GRACE_SEC, QUESTIONS, BRIEFS, SECTIONS, TIMING, NAVIGATION, INTEGRITY, INTRO, OUTRO,
+} from './fixtures/pm-test.mjs';
+
+/**
+ * The end-to-end test below drives the engine against the PM fixture rather than the live test,
+ * so it keeps meaning the same thing whichever assessment is compiled into wt-questions.mjs.
+ */
+const FIXTURE = {
+  durationSec: DURATION_SEC, graceSec: GRACE_SEC, questions: QUESTIONS, sections: SECTIONS, briefs: BRIEFS,
+  timing: TIMING, navigation: NAVIGATION, integrity: INTEGRITY, intro: INTRO, outro: OUTRO,
+};
+const config = (overrides = {}) => engineConfig({ ...FIXTURE, ...overrides });
+const handle = (store, body, now, cfg = config()) => engineHandle(store, body, now, cfg);
+const listCandidates = (store, now, cfg = config()) => engineListCandidates(store, now, cfg);
 
 const BASE = 'appFAKE0000000000';
 const TABLE = 'tblFAKE0000000000';

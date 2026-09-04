@@ -507,6 +507,51 @@ function renderBrief(brief) {
       const p = document.createElement('p');
       p.textContent = block.text;
       panel.append(p);
+    } else if (block.type === 'h') {
+      // A subheading inside the brief, for a packet long enough to need signposts. One level
+      // only: the brief's own heading is the h2 above, so this is the step below it.
+      const h = document.createElement('h3');
+      h.className = 'brief-sub';
+      h.textContent = block.text;
+      panel.append(h);
+    } else if (block.type === 'list') {
+      const ul = document.createElement('ul');
+      for (const item of block.items || []) {
+        const li = document.createElement('li');
+        li.textContent = item;
+        ul.append(li);
+      }
+      panel.append(ul);
+    } else if (block.type === 'table') {
+      // Data tables, built cell by cell from text nodes. Nothing an author writes becomes markup,
+      // same as every other block; a table is just the one shape a bullet list cannot carry.
+      const wrap = document.createElement('div');
+      wrap.className = 'brief-table';
+      const table = document.createElement('table');
+      if (Array.isArray(block.head) && block.head.length) {
+        const thead = document.createElement('thead');
+        const tr = document.createElement('tr');
+        for (const cell of block.head) {
+          const th = document.createElement('th');
+          th.textContent = cell;
+          tr.append(th);
+        }
+        thead.append(tr);
+        table.append(thead);
+      }
+      const tbody = document.createElement('tbody');
+      for (const row of block.rows || []) {
+        const tr = document.createElement('tr');
+        for (const cell of row) {
+          const td = document.createElement('td');
+          td.textContent = cell;
+          tr.append(td);
+        }
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      wrap.append(table);
+      panel.append(wrap);
     } else if (block.type === 'quote') {
       const fig = document.createElement('figure');
       fig.className = 'quote';

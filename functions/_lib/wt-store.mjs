@@ -28,19 +28,19 @@ import { kvStore } from './wt-kv.mjs';
 const BASE = 'app3qxyas11wjYIhe';
 
 /**
- * The DEMO table, not the real one. This matters more than any other line in this repo.
+ * The EVP table: `Work Test Sessions (EVP)`. This matters more than any other line in this repo.
  *
- * This copy of the work test is built to be deployed WITHOUT a password, so anyone with the URL
- * can take it and read the results board. Pointing it at the real `Work Test Sessions` table
- * would put actual candidates' names, emails, and answers on the open internet. The separation
- * between the two tables is the only thing preventing that, so it is the default here rather
- * than something a deployer has to remember to set.
+ * This deployment serves the Evidence Action EVP, Evidence take-home exercise to real candidates,
+ * so this table holds real names, emails, answers and uploaded files. It is deliberately NOT the
+ * public demo's table (`Work Test Sessions (Demo)`, tbl6PEZ6JQGtolN9N), which anyone holding the
+ * demo link can read back through the demo admin page, and it is not the 2AI PM test's table
+ * either. Three tests, three tables, and the default lives here rather than in a variable so a
+ * deployer cannot forget to set it and quietly write candidates into the wrong one.
  *
- * Do not "fix" this to match the internal copy. If you need this instance to read real
- * submissions, you need Cloudflare Access in front of it instead, at which point use the copy
- * that lives in the master-mega-badass-site repo.
+ * The table needs an Attachment column named `Files` (or set AIRTABLE_WT_FILES), because this
+ * test accepts PDF and Word uploads.
  */
-const TABLE = 'tbl6PEZ6JQGtolN9N';
+const TABLE = 'tblGlPl5hThtcGkTu';
 
 /** Returns { store, backend } or throws with a message worth showing an admin. */
 export function storeFor(env) {

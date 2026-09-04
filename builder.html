@@ -182,6 +182,11 @@ code { font-family: var(--mono); font-size: 0.82em; }
 .pv .ctx { color: var(--muted); font-size: 0.82rem; }
 .pv .brief { border-left: 2px solid var(--border); padding-left: 0.6rem; margin-bottom: 0.7rem; font-size: 0.8rem; color: var(--muted); }
 .pv .brief figure { margin: 0.4rem 0; }
+.pv .brief h4 { margin: 0.7rem 0 0.25rem; font-size: 0.82rem; color: var(--ink); }
+.pv .brief ul { margin: 0.2rem 0 0.5rem; padding-left: 1.1rem; }
+.pv .brief table { border-collapse: collapse; margin: 0.3rem 0 0.6rem; font-size: 0.76rem; }
+.pv .brief th, .pv .brief td { text-align: left; vertical-align: top; padding: 0.15rem 0.45rem; border-bottom: 1px solid var(--border); }
+.pv .brief p { white-space: pre-line; }
 .pv .brief figcaption { font-weight: 640; color: var(--ink); font-size: 0.76rem; }
 .pv .opt { display: block; width: 100%; text-align: left; margin-bottom: 0.3rem; }
 .pv .fake { border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 0.55rem; color: var(--muted); font-size: 0.8rem; margin-bottom: 0.6rem; }
@@ -310,6 +315,9 @@ const $ = (s, r = document) => r.querySelector(s);
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
 
 /** Builds an element. Text always goes in as text, never as markup. */
+/** What each brief block type is called in the editor. Keep in step with renderBrief in app.js. */
+const BLOCK_NAMES = { p: 'Paragraph', h: 'Subheading', list: 'Bullet list', table: 'Table', quote: 'Quoted message', link: 'Link to data' };
+
 function el(tag, props = {}, ...kids) {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
@@ -861,14 +869,29 @@ function drawBriefs(root) {
     brief.blocks.forEach((b, bi) => {
       const bb = el('div', { class: 'sub' });
       bb.append(el('div', { class: 'head' },
-        el('span', { class: 'n', text: b.type === 'p' ? 'Paragraph' : b.type === 'quote' ? 'Quoted message' : 'Link to data' }),
+        el('span', { class: 'n', text: BLOCK_NAMES[b.type] || 'Link to data' }),
         el('span', { class: 'grow' }),
         el('button', { class: 'btn tiny', text: '↑', onclick: () => { if (bi > 0) { [brief.blocks[bi - 1], brief.blocks[bi]] = [brief.blocks[bi], brief.blocks[bi - 1]]; drawDetail(); touch(); } } }),
         el('button', { class: 'btn tiny', text: '↓', onclick: () => { if (bi < brief.blocks.length - 1) { [brief.blocks[bi + 1], brief.blocks[bi]] = [brief.blocks[bi], brief.blocks[bi + 1]]; drawDetail(); touch(); } } }),
         el('button', { class: 'btn tiny danger', text: '✕', onclick: () => { brief.blocks.splice(bi, 1); drawDetail(); touch(); } })));
 
       if (b.type === 'p') bb.append(field('Text', area(b.text, (v) => { b.text = v; touch(); }, 3)));
-      else if (b.type === 'quote') {
+      else if (b.type === 'h') bb.append(field('Subheading', input(b.text, (v) => { b.text = v; touch(); })));
+      else if (b.type === 'list') {
+        bb.append(field('Bullet points, one per line', area((b.items || []).join('\n'), (v) => {
+          b.items = v.split('\n').map((x) => x.trim()).filter(Boolean);
+          touch();
+        }, 4)));
+      } else if (b.type === 'table') {
+        // One row per line, cells separated by a pipe. The first line is the header row.
+        const toText = () => [b.head || [], ...(b.rows || [])].map((r) => r.join(' | ')).join('\n');
+        bb.append(field('Rows, one per line, cells separated by |. The first line is the header.', area(toText(), (v) => {
+          const rows = v.split('\n').filter((line) => line.trim()).map((line) => line.split('|').map((c) => c.trim()));
+          b.head = rows.shift() || [];
+          b.rows = rows;
+          touch();
+        }, 5)));
+      } else if (b.type === 'quote') {
         bb.append(field('Who and when', input(b.label, (v) => { b.label = v; touch(); }), 'For example "Slack from your manager, 9:05am".'));
         bb.append(field('Message', area(b.text, (v) => { b.text = v; touch(); }, 4)));
         bb.append(field('Numbered points, one per line (optional)', area((b.list || []).join('\n'), (v) => {
@@ -887,6 +910,9 @@ function drawBriefs(root) {
 
     box.append(el('div', { class: 'btns' },
       el('button', { class: 'btn tiny', text: '+ Paragraph', onclick: () => { brief.blocks.push({ type: 'p', text: '' }); drawDetail(); touch(); } }),
+      el('button', { class: 'btn tiny', text: '+ Subheading', onclick: () => { brief.blocks.push({ type: 'h', text: '' }); drawDetail(); touch(); } }),
+      el('button', { class: 'btn tiny', text: '+ Bullet list', onclick: () => { brief.blocks.push({ type: 'list', items: [] }); drawDetail(); touch(); } }),
+      el('button', { class: 'btn tiny', text: '+ Table', onclick: () => { brief.blocks.push({ type: 'table', head: ['Column', 'Column'], rows: [['', '']] }); drawDetail(); touch(); } }),
       el('button', { class: 'btn tiny', text: '+ Quoted message', onclick: () => { brief.blocks.push({ type: 'quote', label: '', text: '' }); drawDetail(); touch(); } }),
       el('button', { class: 'btn tiny', text: '+ Link to data', onclick: () => { brief.blocks.push({ type: 'link', label: 'Open the data', url: 'https://' }); drawDetail(); touch(); } })));
     root.append(box);
@@ -1109,7 +1135,14 @@ function drawWalk(root) {
       if (brief.heading) b.append(el('strong', { text: brief.heading }));
       for (const block of brief.blocks || []) {
         if (block.type === 'p') b.append(el('p', { text: block.text }));
-        else if (block.type === 'quote') {
+        else if (block.type === 'h') b.append(el('h4', { text: block.text }));
+        else if (block.type === 'list') { const ul = el('ul'); for (const it of block.items || []) ul.append(el('li', { text: it })); b.append(ul); }
+        else if (block.type === 'table') {
+          const t = el('table');
+          if (block.head && block.head.length) { const tr = el('tr'); for (const c of block.head) tr.append(el('th', { text: c })); t.append(tr); }
+          for (const row of block.rows || []) { const tr = el('tr'); for (const c of row) tr.append(el('td', { text: c })); t.append(tr); }
+          b.append(t);
+        } else if (block.type === 'quote') {
           const fig = el('figure');
           if (block.label) fig.append(el('figcaption', { text: block.label }));
           fig.append(el('p', { text: block.text }));
@@ -1250,6 +1283,9 @@ function review() {
 
   for (const [key, brief] of Object.entries(spec.briefs)) {
     for (const b of brief.blocks || []) {
+      if (!BLOCK_NAMES[b.type]) {
+        problems.push({ level: 'error', message: `Brief "${key}" has a block of unknown type "${b.type}".` });
+      }
       if (b.type === 'link' && !/^https?:\/\/\S+$/i.test(b.url || '')) {
         problems.push({ level: 'error', message: `The link in brief "${key}" must be a full https:// address.` });
       }
@@ -1404,7 +1440,7 @@ $('#file').addEventListener('change', async (e) => {
 
 $('#load-example').addEventListener('click', async () => {
   if (!confirm('Replace the current draft with the example? Anything unsaved here is lost.')) return;
-  for (const path of ['tools/evp-demo-spec.json', 'tools/example-branching-spec.json']) {
+  for (const path of ['tools/evp-spec.json', 'tools/example-branching-spec.json']) {
     try {
       const res = await fetch(path);
       if (!res.ok) continue;

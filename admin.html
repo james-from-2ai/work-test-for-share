@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Work test admin</title>
+<title>EVP work test admin</title>
 <link rel="stylesheet" href="assets/styles.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f5f4f'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M16 10.5V16l3.6 2.6' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
 <style>
@@ -53,13 +53,9 @@
 </style>
 </head>
 <body>
-<div class="demo-banner">
-  <strong>Demo.</strong> This is a public preview of 2AI's timed work test, for showing people how it works.
-  Anything you type here is visible to anyone with the link, so use a made-up name and do not enter anything private.
-  It is not a live application and nobody is assessed on it.
-</div><main class="wrap">
+<main class="wrap">
   <section class="card">
-    <p class="eyebrow">Internal</p>
+    <p class="eyebrow">Internal &middot; Evidence Action EVP work test</p>
     <h1>Work test admin</h1>
     <p class="muted">The admin key is held in this tab only, never written to storage. Reloading asks for it again, on purpose.</p>
     <div class="row">
@@ -114,8 +110,8 @@ async function admin(action, extra = {}) {
   if (action === 'csv') return res;
   const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
   // The server may attach a diagnostic, but only to a caller who already sent a key, so a
-  // passer-by on this public demo never sees one. To whoever is actually setting the deployment
-  // up, the specific reason is the difference between fixable and mysterious.
+  // passer-by on this open hostname never sees one. To whoever is actually setting the
+  // deployment up, the specific reason is the difference between fixable and mysterious.
   if (!data.ok && data.visibleNames) {
     return fail(`ADMIN_KEY has not reached this deployment. What it can see: ${data.visibleNames.join(', ') || '(nothing)'}. `
       + 'If ADMIN_KEY is missing from that list, it was saved on the wrong environment or the variable was never committed. '
@@ -385,22 +381,11 @@ async function load() {
 
 $('#load').addEventListener('click', load);
 
-/**
- * `?k=` prefills the admin key and loads straight away, so a link can be handed to someone who
- * should not have to be told what to paste where.
- *
- * Only ever use this with a key you are happy to have in browser history, chat logs, and any
- * referrer header the page emits: that is fine for a throwaway demo key, and a bad idea for the
- * key guarding real candidates' answers.
+/*
+ * The public demo accepted the admin key from a `?k=` query string. This deployment does not:
+ * the key here guards real candidates' answers, and a key in a URL ends up in browser history,
+ * chat logs and referrer headers. Paste it into the box.
  */
-(function prefillFromUrl() {
-  const k = new URLSearchParams(location.search).get('k');
-  if (!k) return;
-  $('#key').value = k;
-  // Drop it from the address bar so it is not casually re-shared or bookmarked.
-  history.replaceState(null, '', location.pathname);
-  load();
-})();
 
 $('#create').addEventListener('click', async () => {
   const people = $('#people').value.split('\n').map((line) => {

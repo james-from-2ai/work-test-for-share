@@ -147,7 +147,7 @@ test('exporting the live test produces a spec that applies back cleanly', () => 
 });
 
 test('the shipped example specs are all valid', () => {
-  for (const name of ['example-branching-spec.json', 'evp-demo-spec.json']) {
+  for (const name of ['example-branching-spec.json', 'evp-spec.json']) {
     const spec = JSON.parse(readFileSync(join(ROOT, 'tools', name), 'utf8'));
     checkParses(generate(spec), name);
   }

@@ -51,10 +51,19 @@ const problems = validateFlow(spec.questions || []);
 
 // The link URLs are the one place an author's text reaches an HTML attribute, so they are
 // checked here as well as in the builder. A spec can arrive by any route, including by hand.
+const BLOCK_TYPES = ['p', 'h', 'list', 'table', 'quote', 'link'];
 for (const [key, brief] of Object.entries(spec.briefs || {})) {
   for (const block of brief.blocks || []) {
+    if (!BLOCK_TYPES.includes(block.type)) {
+      // The client skips a block it does not know, so a typo here would silently drop part of the
+      // packet a candidate is meant to read. Refuse it instead.
+      problems.push({ level: 'error', message: `Brief "${key}" has a block of unknown type "${block.type}". Known: ${BLOCK_TYPES.join(', ')}.` });
+    }
     if (block.type === 'link' && !/^https?:\/\/\S+$/i.test(block.url || '')) {
       problems.push({ level: 'error', message: `The link in brief "${key}" is not an http(s) address.` });
+    }
+    if (block.type === 'table' && !(Array.isArray(block.rows) && block.rows.every((r) => Array.isArray(r)))) {
+      problems.push({ level: 'error', message: `A table in brief "${key}" needs "rows" as an array of arrays.` });
     }
   }
 }
@@ -166,8 +175,9 @@ export const SECTIONS = ${lit(spec.sections)};
 
 /**
  * Reference material that stays on screen for every question in a part. Block types the client
- * knows how to render: 'p' (paragraph), 'quote' (a Slack or email, with a label and optional
- * numbered list), 'link' (a button out to the data).
+ * knows how to render: 'p' (paragraph), 'h' (subheading), 'list' (bullet points), 'table' (a
+ * header row and data rows), 'quote' (a Slack, email or memo, with a label and optional numbered
+ * list), 'link' (a button out to the data).
  */
 export const BRIEFS = ${lit(spec.briefs || {})};
 

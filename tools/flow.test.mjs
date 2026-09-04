@@ -49,7 +49,13 @@ const BRANCHY = [
   { id: 'wrap', section: 'part2', type: 'short', required: false, prompt: 'Anything else?', next: null },
 ];
 
-const CFG = { ...config(), questions: BRANCHY };
+/** The two parts BRANCHY refers to, weighted like the original PM task: Part 1 is the bulk. */
+const PARTS = [
+  { id: 'part1', label: 'Part 1', summary: 'Analysis', recommendedMin: 60 },
+  { id: 'part2', label: 'Part 2', summary: 'Follow-up', recommendedMin: 30 },
+];
+
+const CFG = config({ questions: BRANCHY, sections: PARTS, durationSec: 90 * 60 });
 const T0 = 1_800_000_000_000;
 
 async function started() {
