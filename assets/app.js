@@ -101,6 +101,8 @@ const REJECTIONS = {
   no_edit: 'This test does not allow changing an answer once it is submitted.',
   no_back: 'This test does not allow going back.',
   not_an_upload: 'This question does not take a file.',
+  no_choice: 'Select one option to continue.',
+  too_many_files: 'This question already has as many files as it takes.',
 };
 
 /* ---------------------------------------------------------------------- drafts ------- */
@@ -464,6 +466,7 @@ function renderProgress(state, { preview = false } = {}) {
   const mode = state.timing ? state.timing.mode : 'total';
 
   track.replaceChildren();
+  let stepNo = 1;
   for (const s of progress.sections) {
     // A part this candidate's branch routes around is not drawn at all. The server has already
     // taken it out of the shares, so drawing it would leave a slice nothing can ever fill.
@@ -474,16 +477,31 @@ function renderProgress(state, { preview = false } = {}) {
     seg.style.flexGrow = String(s.recommendedMin);
     seg.title = `${s.label}: ${s.summary}. About ${s.recommendedMin} minutes, ${countOf(s)}.`;
 
+    // A step: numbered dot and label, a slim bar that fills, and what the part is expected to take.
+    const head = document.createElement('div');
+    head.className = 'seg-head';
+    const dot = document.createElement('span');
+    dot.className = 'seg-dot';
+    dot.textContent = s.state === 'done' ? '✓' : String(stepNo);
+    const tag = document.createElement('span');
+    tag.className = 'seg-tag';
+    tag.textContent = s.label;
+    head.append(dot, tag);
+
+    const bar = document.createElement('div');
+    bar.className = 'seg-bar';
     const fill = document.createElement('div');
     fill.className = 'seg-fill';
     fill.style.width = `${s.fill}%`;
-    seg.append(fill);
+    bar.append(fill);
 
-    const tag = document.createElement('span');
-    tag.className = 'seg-tag';
-    tag.textContent = `${s.label} · ${s.share}%`;
-    seg.append(tag);
+    const sub = document.createElement('div');
+    sub.className = 'seg-sub';
+    sub.textContent = `about ${s.recommendedMin} min · ${s.total == null ? 'questions vary' : plural(s.total, 'question')}`;
+
+    seg.append(head, bar, sub);
     track.append(seg);
+    stepNo += 1;
   }
 
   const live = progress.sections.filter((s) => s.state !== 'skipped');
@@ -551,6 +569,32 @@ function renderBrief(brief) {
         ul.append(li);
       }
       panel.append(ul);
+    } else if (block.type === 'note') {
+      // A tinted callout for instructions about the exercise itself, so they read as coming from
+      // us rather than as part of the case a candidate is analysing.
+      const box = document.createElement('aside');
+      box.className = 'brief-note';
+      if (block.title) {
+        const h = document.createElement('p');
+        h.className = 'brief-note-title';
+        h.textContent = block.title;
+        box.append(h);
+      }
+      if (block.text) {
+        const p = document.createElement('p');
+        p.textContent = block.text;
+        box.append(p);
+      }
+      if (Array.isArray(block.items) && block.items.length) {
+        const ul = document.createElement('ul');
+        for (const item of block.items) {
+          const li = document.createElement('li');
+          li.textContent = item;
+          ul.append(li);
+        }
+        box.append(ul);
+      }
+      panel.append(box);
     } else if (block.type === 'cards') {
       // A set of parallel things: the options a candidate chooses between (side by side) or the
       // numbered questions they answer (stacked). Each card is title, text, bullet points, and an
@@ -934,7 +978,9 @@ function fileToBase64(file) {
  * Returns { has, busy }: whether a file is attached, and whether one is mid-upload.
  */
 function attachmentField(q, state, field, onChange) {
-  let attached = state.upload || (state.given && state.given.upload) || null;
+  const max = Number.isInteger(q.maxFiles) && q.maxFiles > 1 ? q.maxFiles : 1;
+  const given = state.given ? (state.given.uploads || (state.given.upload ? [state.given.upload] : [])) : [];
+  let attached = [].concat(state.uploads || state.upload || given || []).filter(Boolean);
   let busy = false;
 
   const box = document.createElement('div');
@@ -945,12 +991,24 @@ function attachmentField(q, state, field, onChange) {
   if (q.acceptAttr) file.accept = q.acceptAttr;
   const status = document.createElement('p');
   status.className = 'muted small upload-status';
+  const list = document.createElement('ul');
+  list.className = 'files-list';
 
   const paint = () => {
-    status.textContent = attached
-      ? `Attached: ${attached.filename} (${kb(attached.size)}). Choosing another file replaces it.`
-      : q.acceptText || 'No file chosen yet.';
-    status.classList.toggle('ok', !!attached);
+    list.replaceChildren();
+    if (max > 1) {
+      for (const f of attached) {
+        const li = document.createElement('li');
+        li.textContent = `${f.filename} (${kb(f.size)})`;
+        list.append(li);
+      }
+    }
+    if (!attached.length) status.textContent = q.acceptText || 'No file chosen yet.';
+    else if (max === 1) status.textContent = `Attached: ${attached[0].filename} (${kb(attached[0].size)}). Choosing another file replaces it.`;
+    else if (attached.length >= max) status.textContent = `${attached.length} files attached, which is the most this question takes.`;
+    else status.textContent = `${attached.length} of up to ${max} files attached. Choose another to add it.`;
+    status.classList.toggle('ok', attached.length > 0);
+    file.disabled = busy || (max > 1 && attached.length >= max);
   };
 
   file.addEventListener('change', async () => {
@@ -986,16 +1044,17 @@ function attachmentField(q, state, field, onChange) {
       onChange();
       return showError(res.detail || (res.error && REJECTIONS[res.error]) || RETRY_MSG);
     }
-    attached = res.uploaded;
+    attached = max > 1 ? (Array.isArray(res.uploads) ? res.uploads : [...attached, res.uploaded]) : [res.uploaded];
+    file.value = '';
     paint();
     onChange();
   });
 
-  box.append(file, status);
+  box.append(file, list, status);
   field.append(box);
   paint();
 
-  return { has: () => !!attached, busy: () => busy };
+  return { has: () => attached.length > 0, busy: () => busy };
 }
 
 /** What a question insists on, said the way a candidate would want to hear it. */
@@ -1090,6 +1149,41 @@ function renderQuestion(state) {
 
   let read; // returns what we send as `value`
 
+  /** Radio list for a question with options. Returns { el, read, set }; onPick fires on change. */
+  const optionList = (onPick) => {
+    const list = document.createElement('div');
+    list.className = 'opts';
+    q.options.forEach((opt, i) => {
+      const label = document.createElement('label');
+      label.className = 'opt';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'choice';
+      input.value = String(i);
+      const span = document.createElement('span');
+      span.textContent = opt;
+      label.append(input, span);
+      input.addEventListener('change', () => {
+        list.querySelectorAll('.opt').forEach((el) => el.classList.remove('sel'));
+        label.classList.add('sel');
+        onPick(i);
+      });
+      list.append(label);
+    });
+    const set = (i) => {
+      const inputs = list.querySelectorAll('input');
+      if (!Number.isInteger(i) || !inputs[i]) return false;
+      inputs[i].checked = true;
+      inputs[i].closest('.opt').classList.add('sel');
+      return true;
+    };
+    const readIndex = () => {
+      const sel = list.querySelector('input:checked');
+      return sel ? Number(sel.value) : null;
+    };
+    return { el: list, read: readIndex, set };
+  };
+
   // On an either/or question the two ways of answering live in their own containers, so a chooser
   // can show one at a time. Elsewhere these are just the field.
   const textWrap = document.createElement('div');
@@ -1099,7 +1193,52 @@ function renderQuestion(state) {
   let mode = null; // 'text' | 'file' | null, only meaningful when a chooser is shown
   let hadDraft = false;
 
-  if (q.type === 'rich') {
+  if (q.type === 'decision') {
+    // One answer in two labelled parts: the option (which decides the route) and the write-up.
+    // Both are locked in together, which is the point: the write-up has to support the option.
+    const lblA = document.createElement('p');
+    lblA.className = 'part-label';
+    lblA.textContent = q.optionPrompt || 'Which option do you recommend?';
+    const opts = optionList(() => { saveDecision(); refreshNext(); });
+    const lblB = document.createElement('p');
+    lblB.className = 'part-label';
+    lblB.textContent = q.responsePrompt || 'Your written response';
+    field.append(lblA, opts.el, lblB);
+
+    const counter = document.createElement('p');
+    counter.className = 'counter';
+    const paint = () => {
+      const blocks = ed.read();
+      const chars = richChars(blocks);
+      const text = blocks.map((b) => b.runs.map((r) => r.t).join('')).join(' ').trim();
+      const words = text ? text.split(/\s+/).length : 0;
+      over = chars > q.maxLength;
+      counter.textContent = over
+        ? `${chars - q.maxLength} characters over the limit of ${q.maxLength}`
+        : `${words} words · ${chars} / ${q.maxLength} characters`;
+      counter.classList.toggle('over', over);
+      refreshNext();
+      saveDecision();
+    };
+    const ed = richEditor(q, textWrap, paint);
+    textWrap.append(counter);
+    field.append(textWrap);
+    function saveDecision() {
+      if (!past) queueDraft(q.id, { option: opts.read(), text: ed.read() });
+    }
+    const draft = past ? null : loadDraft(q.id);
+    if (draft && typeof draft === 'object' && !Array.isArray(draft)) {
+      const gotOption = opts.set(draft.option);
+      if (draft.text && !isBlank(draft.text)) {
+        renderStoredAnswer(ed.editor, draft.text, { blank: null });
+        hadDraft = true;
+      }
+      if (gotOption || hadDraft) noteRestored(field);
+    }
+    paint();
+    read = () => ({ option: opts.read(), text: mode === 'file' ? [] : ed.read() });
+    focusEditor = () => ed.editor.focus();
+  } else if (q.type === 'rich') {
     const counter = document.createElement('p');
     counter.className = 'counter';
     const paint = () => {
@@ -1134,38 +1273,12 @@ function renderQuestion(state) {
     // Focusing normally would scroll straight past everything the candidate is meant to read.
     if (!past) ed.editor.focus({ preventScroll: true });
   } else if (q.type === 'choice') {
-    const list = document.createElement('div');
-    list.className = 'opts';
-    q.options.forEach((opt, i) => {
-      const label = document.createElement('label');
-      label.className = 'opt';
-      const input = document.createElement('input');
-      input.type = 'radio';
-      input.name = 'choice';
-      input.value = String(i);
-      const span = document.createElement('span');
-      span.textContent = opt;
-      label.append(input, span);
-      input.addEventListener('change', () => {
-        list.querySelectorAll('.opt').forEach((el) => el.classList.remove('sel'));
-        label.classList.add('sel');
-        if (!past) saveDraft(q.id, i);
-      });
-      list.append(label);
-    });
-    field.append(list);
-    read = () => {
-      const sel = list.querySelector('input:checked');
-      return sel ? Number(sel.value) : null;
-    };
+    const opts = optionList((i) => { if (!past) saveDraft(q.id, i); });
+    field.append(opts.el);
+    read = opts.read;
     const draft = past ? null : loadDraft(q.id);
-    const inputs = list.querySelectorAll('input');
-    if (Number.isInteger(draft) && inputs[draft]) {
-      inputs[draft].checked = true;
-      inputs[draft].closest('.opt').classList.add('sel');
-      noteRestored(field);
-    }
-    if (!past) list.querySelector('input')?.focus();
+    if (Number.isInteger(draft) && opts.set(draft)) noteRestored(field);
+    if (!past) opts.el.querySelector('input')?.focus({ preventScroll: true });
   } else {
     if (q.type === 'upload') {
       const lbl = document.createElement('label');
@@ -1213,7 +1326,7 @@ function renderQuestion(state) {
    * The choice is remembered per question so a reload lands them back where they were, and a file
    * already uploaded, or a draft already typed, decides it for them.
    */
-  const chooser = q.require === 'either' && q.type === 'rich' && !past;
+  const chooser = q.require === 'either' && (q.type === 'rich' || q.type === 'decision') && !past;
   if (chooser) {
     const box = document.createElement('div');
     box.className = 'mode-choice';
@@ -1243,10 +1356,13 @@ function renderQuestion(state) {
       opts.append(label);
     };
     const allowed = Array.isArray(q.accept) && q.accept.length === 1 && q.accept[0] === 'pdf' ? 'a PDF' : 'a PDF or Word document';
-    option('text', 'Type or paste it here',
-      'We recommend drafting in Word or Google Docs and pasting it in, so you keep your own copy. Headings, bold and lists survive the paste.');
-    option('file', `Attach ${allowed}`,
-      `From Word or Google Docs: File, then Save As or Download, and choose PDF. Up to ${q.maxBytes ? (q.maxBytes / 1_000_000).toFixed(1) : '4.5'} MB.`);
+    const mb = q.maxBytes ? (q.maxBytes / 1_000_000).toFixed(1) : '4.5';
+    const many = q.maxFiles > 1;
+    const m = q.modes && typeof q.modes === 'object' ? q.modes : {};
+    option('text', (m.text && m.text.title) || 'Type or paste it here',
+      (m.text && m.text.sub) || 'We recommend drafting in Word or Google Docs and pasting it in, so you keep your own copy. Headings, bold and lists survive the paste.');
+    option('file', (m.file && m.file.title) || (many ? `Attach ${allowed.replace(/^a /, '')} files` : `Attach ${allowed}`),
+      (m.file && m.file.sub) || `From Word or Google Docs: File, then Save As or Download, and choose PDF. Up to ${mb} MB${many ? ` each, up to ${q.maxFiles} files` : ''}. If yours is larger, export it at reduced quality or paste the text instead.`);
     box.append(legend, opts);
     field.insertBefore(box, textWrap);
 
@@ -1291,7 +1407,10 @@ function renderQuestion(state) {
     // With a chooser shown, only the chosen half counts: a file attached earlier does not stand in
     // for a typed answer once they have said they are typing, and vice versa.
     const hasFile = attachment && mode !== 'text' ? attachment.has() : false;
-    const hasText = !isBlank(read());
+    const answer = read();
+    const textPart = q.type === 'decision' ? (answer && answer.text) : answer;
+    const hasText = !isBlank(textPart);
+    if (q.type === 'decision' && !(answer && Number.isInteger(answer.option))) return REJECTIONS.no_choice;
     const blankMsg = q.type === 'choice' ? 'Choose one option to continue.'
       : canRevise ? 'Write something to continue.'
       : 'Write something to continue. You cannot come back to this question, so if you are short of time, say what you would have done instead.';
@@ -1429,7 +1548,14 @@ function prefill(q, given, field, canEdit) {
       inputs[given.choiceIndex].checked = true;
       inputs[given.choiceIndex].closest('.opt').classList.add('sel');
     }
-  } else if (q.type === 'rich') {
+  } else if (q.type === 'rich' || q.type === 'decision') {
+    if (q.type === 'decision') {
+      const inputs = field.querySelectorAll('.opt input');
+      if (Number.isInteger(given.choiceIndex) && inputs[given.choiceIndex]) {
+        inputs[given.choiceIndex].checked = true;
+        inputs[given.choiceIndex].closest('.opt').classList.add('sel');
+      }
+    }
     const editor = field.querySelector('.rt-edit');
     if (editor) {
       editor.replaceChildren();
@@ -1568,10 +1694,19 @@ async function openReview() {
     q.textContent = `Question ${a.number}. ${a.prompt}`;
     const body = document.createElement('div');
     body.className = 'review-a';
+    const files = Array.isArray(a.uploads) && a.uploads.length ? a.uploads : a.upload ? [a.upload] : [];
+    if (a.choice) {
+      const pick = document.createElement('p');
+      pick.className = 'review-choice';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Recommended: ';
+      pick.append(strong, document.createTextNode(a.choice));
+      body.append(pick);
+    }
     renderStoredAnswer(body, a.value, {
-      blank: a.skipped ? 'Not reached: the time for this part ran out.' : a.upload ? null : '(left blank)',
+      blank: a.skipped ? 'Not reached: the time for this part ran out.' : files.length ? null : '(left blank)',
     });
-    if (a.upload) body.append(fileLine(a.upload));
+    for (const f of files) body.append(fileLine(f));
     wrap.append(q, body);
     dlg.append(wrap);
   }

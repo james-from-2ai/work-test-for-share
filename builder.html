@@ -188,6 +188,7 @@ code { font-family: var(--mono); font-size: 0.82em; }
 .pv .brief th, .pv .brief td { text-align: left; vertical-align: top; padding: 0.15rem 0.45rem; border-bottom: 1px solid var(--border); }
 .pv .brief p { white-space: pre-line; }
 .pv .brief .pv-card { border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.6rem; margin: 0.35rem 0; }
+.pv .brief .pv-note { border-left: 3px solid var(--accent, #1f5f4f); background: rgba(31,95,79,0.06); padding: 0.4rem 0.6rem; margin: 0.35rem 0; }
 .pv .brief figcaption { font-weight: 640; color: var(--ink); font-size: 0.76rem; }
 .pv .opt { display: block; width: 100%; text-align: left; margin-bottom: 0.3rem; }
 .pv .fake { border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 0.55rem; color: var(--muted); font-size: 0.8rem; margin-bottom: 0.6rem; }
@@ -317,7 +318,7 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(
 
 /** Builds an element. Text always goes in as text, never as markup. */
 /** What each brief block type is called in the editor. Keep in step with renderBrief in app.js. */
-const BLOCK_NAMES = { p: 'Paragraph', h: 'Subheading', list: 'Bullet list', table: 'Table', cards: 'Cards', quote: 'Quoted message', link: 'Link to data' };
+const BLOCK_NAMES = { p: 'Paragraph', h: 'Subheading', list: 'Bullet list', table: 'Table', cards: 'Cards', note: 'Note (callout)', quote: 'Quoted message', link: 'Link to data' };
 
 /**
  * Cards are edited as plain text, one card per blank-line-separated block: first line the title,
@@ -752,7 +753,11 @@ const TYPES = [
   ['long', 'Plain long answer'],
   ['short', 'Single line'],
   ['choice', 'Multiple choice (this is how you branch)'],
+  ['decision', 'Decision: pick an option AND write it up, on one screen (branches on the option)'],
 ];
+
+/** Question types whose options decide the route. Mirrors `branches` in wt-flow.mjs. */
+const isBranching = (q) => !!q && (q.type === 'choice' || q.type === 'decision');
 
 const REQUIRE = [
   { value: 'text', title: 'Written answer', detail: 'They type their answer. No file.' },
@@ -789,9 +794,10 @@ function drawQuestionEditor(root, q) {
   root.append(el('div', { class: 'row' },
     field('Answer type', select(TYPES, q.type, (v) => {
       q.type = v;
-      if (v === 'choice' && !Array.isArray(q.options)) q.options = [{ label: 'First option' }, { label: 'Second option' }];
-      if (v !== 'choice') delete q.options;
+      if ((v === 'choice' || v === 'decision') && !Array.isArray(q.options)) q.options = [{ label: 'First option' }, { label: 'Second option' }];
+      if (v !== 'choice' && v !== 'decision') delete q.options;
       if (v === 'choice') q.require = 'text';
+      if (v === 'decision' && !q.require) q.require = 'either';
       drawDetail(); touch();
     })),
     field('Which part', select(spec.sections.map((s) => [s.id, s.label]), q.section, (v) => { q.section = v; touch(); }))));
@@ -833,7 +839,7 @@ function drawQuestionEditor(root, q) {
 
   root.append(el('p', { class: 'colhead', style: 'margin-top:1rem', text: 'Where this leads' }));
 
-  if (q.type === 'choice') {
+  if (isBranching(q)) {
     root.append(el('p', { class: 'hint', text: 'Each option can send the candidate somewhere different. They never see where an option leads, only its wording.' }));
     q.options = q.options || [];
     q.options.forEach((raw, oi) => {
@@ -919,6 +925,14 @@ function drawBriefs(root) {
           b.items = v.split('\n').map((x) => x.trim()).filter(Boolean);
           touch();
         }, 4)));
+      } else if (b.type === 'note') {
+        bb.append(field('Title (optional)', input(b.title, (v) => { if (v) b.title = v; else delete b.title; touch(); })));
+        bb.append(field('Text (optional)', area(b.text, (v) => { if (v) b.text = v; else delete b.text; touch(); }, 2)));
+        bb.append(field('Bullet points, one per line (optional)', area((b.items || []).join('\n'), (v) => {
+          const lines = v.split('\n').map((x) => x.trim()).filter(Boolean);
+          if (lines.length) b.items = lines; else delete b.items;
+          touch();
+        }, 4)));
       } else if (b.type === 'cards') {
         bb.append(field('Layout', select([['grid', 'Side by side'], ['stack', 'Stacked']], b.layout === 'stack' ? 'stack' : 'grid', (v) => { b.layout = v; touch(); })));
         bb.append(field('Cards, separated by a blank line. First line is the title, "- " starts a bullet, "> " starts a closing note.', area(cardsToText(b.items), (v) => {
@@ -957,6 +971,7 @@ function drawBriefs(root) {
       el('button', { class: 'btn tiny', text: '+ Bullet list', onclick: () => { brief.blocks.push({ type: 'list', items: [] }); drawDetail(); touch(); } }),
       el('button', { class: 'btn tiny', text: '+ Table', onclick: () => { brief.blocks.push({ type: 'table', head: ['Column', 'Column'], rows: [['', '']] }); drawDetail(); touch(); } }),
       el('button', { class: 'btn tiny', text: '+ Cards', onclick: () => { brief.blocks.push({ type: 'cards', layout: 'grid', items: [{ title: 'Option 1', text: '' }, { title: 'Option 2', text: '' }] }); drawDetail(); touch(); } }),
+      el('button', { class: 'btn tiny', text: '+ Note', onclick: () => { brief.blocks.push({ type: 'note', title: '', items: [] }); drawDetail(); touch(); } }),
       el('button', { class: 'btn tiny', text: '+ Quoted message', onclick: () => { brief.blocks.push({ type: 'quote', label: '', text: '' }); drawDetail(); touch(); } }),
       el('button', { class: 'btn tiny', text: '+ Link to data', onclick: () => { brief.blocks.push({ type: 'link', label: 'Open the data', url: 'https://' }); drawDetail(); touch(); } })));
     root.append(box);
@@ -1046,12 +1061,12 @@ function drawMap(root) {
   const nodeFor = (q, extra = '') => {
     const ends = outgoingIds(q, spec.questions).every((n) => n == null);
     const n = el('div', {
-      class: `node ${q.type === 'choice' ? 'choice2' : ''} ${ends ? 'end' : ''} ${extra} ${selected === q.id ? 'on' : ''}`,
+      class: `node ${isBranching(q) ? 'choice2' : ''} ${ends ? 'end' : ''} ${extra} ${selected === q.id ? 'on' : ''}`,
       onclick: () => { selected = q.id; drawOutline(); drawDetail(); drawInspector(); },
     },
       el('div', { class: 'nid', text: q.id }),
       el('div', { class: 'npr', text: q.prompt || '(no question text yet)' }),
-      el('div', { class: 'ntag', text: ends ? 'ends the test' : q.type === 'choice' ? `${(q.options || []).length} options` : '' }));
+      el('div', { class: 'ntag', text: ends ? 'ends the test' : isBranching(q) ? `${(q.options || []).length} options` : '' }));
     nodes.set(q.id, n);
     return n;
   };
@@ -1123,7 +1138,7 @@ function drawEdges(map, svg, nodes) {
     if (!from) continue;
     const labels = optionLabels(q) || [];
     const edges = [];
-    if (q.type === 'choice' && Array.isArray(q.options) && q.options.length) {
+    if (isBranching(q) && Array.isArray(q.options) && q.options.length) {
       q.options.forEach((o, i) => {
         const dest = o && typeof o === 'object' && o.next !== undefined
           ? o.next
@@ -1181,7 +1196,13 @@ function drawWalk(root) {
         if (block.type === 'p') b.append(el('p', { text: block.text }));
         else if (block.type === 'h') b.append(el('h4', { text: block.text }));
         else if (block.type === 'list') { const ul = el('ul'); for (const it of block.items || []) ul.append(el('li', { text: it })); b.append(ul); }
-        else if (block.type === 'cards') {
+        else if (block.type === 'note') {
+          const n = el('div', { class: 'pv-note' });
+          if (block.title) n.append(el('strong', { text: block.title }));
+          if (block.text) n.append(el('p', { text: block.text }));
+          if (block.items && block.items.length) { const ul = el('ul'); for (const it of block.items) ul.append(el('li', { text: it })); n.append(ul); }
+          b.append(n);
+        } else if (block.type === 'cards') {
           for (const it of block.items || []) {
             const c = el('div', { class: 'pv-card' });
             if (it.title) c.append(el('strong', { text: it.title }));
@@ -1210,7 +1231,8 @@ function drawWalk(root) {
     card.append(el('h3', { text: q.prompt || '(no question text yet)' }));
     if (q.context) card.append(el('p', { class: 'ctx', text: q.context }));
 
-    if (q.type === 'choice') {
+    if (isBranching(q)) {
+      if (q.type === 'decision') card.append(el('p', { class: 'ctx', text: 'Decision: they pick one of these AND give a written response (or a file) on the same screen. Pick to see where it leads.' }));
       (optionLabels(q) || []).forEach((label, i) => {
         card.append(el('button', {
           class: 'btn opt',
@@ -1323,7 +1345,7 @@ function review() {
 
   for (const q of spec.questions) {
     if (!q.prompt || !q.prompt.trim()) problems.push({ level: 'error', id: q.id, message: `"${q.id}" has no question text.` });
-    if (q.type === 'choice') {
+    if (isBranching(q)) {
       (q.options || []).forEach((o, i) => {
         const label = typeof o === 'string' ? o : (o && o.label) || '';
         if (!label.trim()) problems.push({ level: 'error', id: q.id, message: `Option ${i + 1} of "${q.id}" has no wording.` });

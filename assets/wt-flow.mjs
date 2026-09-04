@@ -59,9 +59,12 @@ function pickedIndex(q, answer) {
 }
 
 /** The id that follows `q` once it has been answered this particular way. */
+/** Which question types carry options that decide the route. */
+export const branches = (q) => !!q && (q.type === 'choice' || q.type === 'decision');
+
 export function nextIdAfter(q, answer, questions) {
   if (!q) return null;
-  if (q.type === 'choice' && Array.isArray(q.options)) {
+  if (branches(q) && Array.isArray(q.options)) {
     const opt = q.options[pickedIndex(q, answer)];
     if (opt && typeof opt === 'object' && opt.next !== undefined) return opt.next;
   }
@@ -70,7 +73,7 @@ export function nextIdAfter(q, answer, questions) {
 
 /** Every id a question could lead to, across all of its options. Used to look ahead. */
 export function outgoingIds(q, questions) {
-  if (q.type === 'choice' && Array.isArray(q.options) && q.options.length) {
+  if (branches(q) && Array.isArray(q.options) && q.options.length) {
     const out = [];
     let anyFallsThrough = false;
     for (const o of q.options) {
@@ -200,9 +203,9 @@ export function validateFlow(questions) {
     if (!q || !q.id) continue;
     if (!exists(q.next)) say('error', `"${q.id}" points at "${q.next}", which does not exist.`);
 
-    if (q.type === 'choice') {
+    if (branches(q)) {
       if (!Array.isArray(q.options) || !q.options.length) {
-        say('error', `"${q.id}" is a choice question with no options.`);
+        say('error', `"${q.id}" is a ${q.type} question with no options.`);
       } else {
         q.options.forEach((o, i) => {
           if (o && typeof o === 'object' && !exists(o.next)) {
@@ -212,7 +215,7 @@ export function validateFlow(questions) {
       }
     } else if (Array.isArray(q.options) && q.options.some((o) => o && typeof o === 'object' && o.next !== undefined)) {
       // Branching on anything but a choice cannot work: there is no option to branch on.
-      say('error', `"${q.id}" has options with destinations but is type "${q.type}", not "choice".`);
+      say('error', `"${q.id}" has options with destinations but is type "${q.type}", not "choice" or "decision".`);
     }
   }
 

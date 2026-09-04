@@ -1,5 +1,5 @@
 {
-  "notes": "Evidence Action, Executive Vice President, Evidence: take-home exercise, 'MMS Nigeria: The Expansion Gate'. Content is taken from the Google Doc 'Setting and Stage 1 / Stage 2 (3 paths)' (Drive id 1P7j-s_vk9cHkHw4eC1DBDs9ZYVmGUSf2ccffkA2r9Fk) as of 2026-09-04, with the wording kept close to the source on purpose. Deliberate departures from the doc, all agreed with James Bedford: the Google Form submission is replaced by the response question plus the option choice at the end of Stage 1, which routes the candidate to Path A, B or C; nothing is timed, because the doc says 'please use the time you need', and the suggested times are shown instead; candidates can re-read their Stage 1 submission while working on Stage 2 but cannot change it; responses are typed or attached as PDF only (Word and Google Docs users are told to save as PDF); and the AI use disclosure is one closing question after both stages rather than a paragraph at the end of each response. The scenario is fictionalized by Evidence Action and the doc says so to the candidate.",
+  "notes": "Evidence Action, Executive Vice President, Evidence: take-home exercise, 'MMS Nigeria: The Expansion Gate'. Content is taken from the Google Doc 'Setting and Stage 1 / Stage 2 (3 paths)' (Drive id 1P7j-s_vk9cHkHw4eC1DBDs9ZYVmGUSf2ccffkA2r9Fk) as of 2026-09-04, with the wording kept close to the source on purpose. Deliberate departures from the doc, all agreed with James Bedford: the Google Form submission is replaced by the response question plus the option choice at the end of Stage 1, which routes the candidate to Path A, B or C; nothing is timed, because the doc says 'please use the time you need', and the suggested times are shown instead; candidates can re-read their Stage 1 submission while working on Stage 2 but cannot change it; responses are typed or attached as PDF only (Word and Google Docs users are told to save as PDF); and the AI use disclosure is two closing questions after both stages (how AI was used, then transcripts, several files allowed) rather than a paragraph at the end of each response. Stage 1 is a single 'decision' question: the option and the write-up on one screen, routed by the option. The scenario is fictionalized by Evidence Action and the doc says so to the candidate.",
   "durationSec": 14400,
   "graceSec": 5,
   "timing": {
@@ -13,33 +13,26 @@
     "blockPaste": false
   },
   "intro": {
-    "estimate": "We suggest about 4 hours in total: 2 to 3 hours for Stage 1 and 1 to 1.5 hours for Stage 2.",
-    "structure": "Two stages, then one closing question about your use of AI. In Stage 1 you read the case, select the option you recommend, then submit your write-up. You must submit Stage 1 before you can see Stage 2, and once submitted it cannot be changed.",
+    "estimate": "About 4 hours suggested: 2 to 3 for Stage 1, 1 to 1.5 for Stage 2.",
+    "structure": "Two stages, then one closing question on your use of AI.",
     "rules": [
       {
         "lead": "Two stages, in order.",
-        "text": "Stage 1 is the case. You read it, select the option you recommend, then submit your written response. Your selection decides which Stage 2 you receive. Once Stage 1 is submitted you will not be able to change it, so make sure your write-up supports the option you selected."
-      },
-      {
-        "lead": "Submit as a PDF or as text.",
-        "text": "For each stage you choose one of two ways to respond: paste or type your answer into the text box, or attach a PDF. We recommend drafting in Word or Google Docs either way, so you keep your own copy. To make a PDF, go to File, then Save As or Download, and choose PDF. Anything typed but not yet submitted is kept only in this browser, so submit before you switch devices."
-      },
-      {
-        "lead": "You can come back to the same link.",
-        "text": "Submitted responses are saved on our server. Close this page whenever you like and reopen the same link to continue where you left off."
+        "text": "Stage 1 is the case. You read it, then on one screen you select the option you recommend and submit your written response. Your selection decides which Stage 2 you receive, and once you continue, Stage 1 is locked. Make sure your write-up supports the option you selected."
       },
       {
         "lead": "You may use AI tools.",
-        "text": "We are not testing whether you can complete this exercise without them, but we expect your submission to include your own thinking and analysis, and we are interested in how you use them. After Stage 2 there is one closing question about how you used AI across the whole exercise, so you do not need to write a disclosure inside your responses."
+        "text": "We are not testing whether you can complete this exercise without them, but we expect your submission to include your own thinking and analysis, and we are interested in how you use them. After Stage 2 there are two closing questions: how you used AI, and your transcripts. You do not need to write a disclosure inside your responses."
       }
     ],
     "sections": [
       {
         "heading": "About this exercise",
-        "text": "This exercise is for the Executive Vice President, Evidence role at Evidence Action. It is delivered in two stages. Stage 1 is self-contained. The information in this exercise is representative of a real Evidence Action program, but parts of it have been fictionalized so the challenges presented are illustrative, not live questions."
+        "text": "This exercise is for the Executive Vice President, Evidence role at Evidence Action. The information in it is representative of a real Evidence Action program, but parts have been fictionalized so the challenges presented are illustrative, not live questions."
       }
     ],
-    "closing": "Please do not share this exercise with anyone outside Evidence Action. If you need a different format or an accommodation because of a disability, reply to the email that sent you this link before you begin and we will sort it out."
+    "closing": "Please do not share this exercise with anyone outside Evidence Action. If you need a different format or an accommodation because of a disability, reply to the email that sent you this link before you begin and we will sort it out.",
+    "submitNote": "We recommend drafting in Word or Google Docs either way, so you keep your own copy. To make a PDF: File, then Save As or Download, and choose PDF."
   },
   "outro": {
     "closing": "Thank you for completing the exercise. We will be in touch about next steps. If anything went wrong while you were working, reply to the email that sent you this link and tell us what happened."
@@ -60,8 +53,8 @@
     {
       "id": "s3",
       "label": "Closing",
-      "summary": "How you used AI",
-      "recommendedMin": 5
+      "summary": "Your use of AI",
+      "recommendedMin": 10
     }
   ],
   "briefs": {
@@ -69,26 +62,6 @@
       "section": "Stage 1 of 2",
       "heading": "MMS Nigeria: The Expansion Gate",
       "blocks": [
-        {
-          "type": "h",
-          "text": "Overview"
-        },
-        {
-          "type": "p",
-          "text": "This exercise is for the Executive Vice President, Evidence role at Evidence Action. It is delivered in two stages. Stage 1 (this packet) is self-contained. The information in this document is representative of a real Evidence Action program, but parts of it have been fictionalized so the challenges presented are illustrative, not live questions."
-        },
-        {
-          "type": "p",
-          "text": "This exercise is not timed. We suggest about 4 hours in total: 2 to 3 hours for Stage 1 and 1 to 1.5 hours for Stage 2. We are not testing how quickly you work; please use the time you need."
-        },
-        {
-          "type": "p",
-          "text": "Format: below this case you will first be asked to select the option you recommend, and then to submit your written response, either pasted into the text box or attached as a PDF (from Word or Google Docs: File, then Save As or Download, and choose PDF). Once both are submitted you will receive the Stage 2 materials, and Stage 1 cannot be changed after that."
-        },
-        {
-          "type": "p",
-          "text": "AI use: you may use AI tools. After Stage 2 there is one closing question about how you used them across the whole exercise, so you do not need to include a disclosure in this response."
-        },
         {
           "type": "h",
           "text": "Scenario"
@@ -630,16 +603,13 @@
           ]
         },
         {
-          "type": "p",
-          "text": "Recommended option. Below this case you will be asked to select your recommended option first, and then to submit your written response. Please make sure the two match."
-        },
-        {
-          "type": "h",
-          "text": "AI use"
-        },
-        {
-          "type": "p",
-          "text": "You may use AI tools. We are not testing whether you can complete this exercise without them, but we expect your submission to include your own thinking and analysis, and we are interested in how you use them. After Stage 2 you will be asked one closing question: what you used and for which parts, what it got wrong or where you disagreed with it, and what you checked independently, with the option to attach your prompts or transcripts. You do not need to write that here."
+          "type": "note",
+          "title": "What to do below",
+          "items": [
+            "Select the option you recommend.",
+            "Give your written response to Questions 1 to 4: type or paste it, or attach a PDF.",
+            "Check the two match. When you continue, both are locked in together and Stage 2 appears."
+          ]
         }
       ]
     },
@@ -648,12 +618,14 @@
       "heading": "MMS Nigeria: Response to the Program",
       "blocks": [
         {
-          "type": "h",
-          "text": "Overview"
-        },
-        {
-          "type": "p",
-          "text": "Welcome to Stage 2, the final stage. Your Stage 1 response has been submitted and cannot be revised, but you can re-read it with the Review link below. We suggest 1 to 1.5 hours. Write your response in the box below or attach it as a PDF (from Word or Google Docs: File, then Save As or Download, and choose PDF). After you submit it there is one short closing question about your use of AI."
+          "type": "note",
+          "title": "Stage 2 of 2",
+          "items": [
+            "Your Stage 1 response is submitted and cannot be revised. You can re-read it with the Review link below.",
+            "We suggest 1 to 1.5 hours.",
+            "Respond by typing or pasting into the box, or attach a PDF.",
+            "After this there are two short closing questions about your use of AI."
+          ]
         },
         {
           "type": "h",
@@ -701,12 +673,14 @@
       "heading": "MMS Nigeria: Response to the Program",
       "blocks": [
         {
-          "type": "h",
-          "text": "Overview"
-        },
-        {
-          "type": "p",
-          "text": "Welcome to Stage 2, the final stage. Your Stage 1 response has been submitted and cannot be revised, but you can re-read it with the Review link below. We suggest 1 to 1.5 hours. Write your response in the box below or attach it as a PDF (from Word or Google Docs: File, then Save As or Download, and choose PDF). After you submit it there is one short closing question about your use of AI."
+          "type": "note",
+          "title": "Stage 2 of 2",
+          "items": [
+            "Your Stage 1 response is submitted and cannot be revised. You can re-read it with the Review link below.",
+            "We suggest 1 to 1.5 hours.",
+            "Respond by typing or pasting into the box, or attach a PDF.",
+            "After this there are two short closing questions about your use of AI."
+          ]
         },
         {
           "type": "h",
@@ -754,12 +728,14 @@
       "heading": "MMS New Country: What the Evaluation Found",
       "blocks": [
         {
-          "type": "h",
-          "text": "Overview"
-        },
-        {
-          "type": "p",
-          "text": "Welcome to Stage 2, the final stage. Your Stage 1 response has been submitted and cannot be revised, but you can re-read it with the Review link below. We suggest 1 to 1.5 hours. Write your response in the box below or attach it as a PDF (from Word or Google Docs: File, then Save As or Download, and choose PDF). After you submit it there is one short closing question about your use of AI."
+          "type": "note",
+          "title": "Stage 2 of 2",
+          "items": [
+            "Your Stage 1 response is submitted and cannot be revised. You can re-read it with the Review link below.",
+            "We suggest 1 to 1.5 hours.",
+            "Respond by typing or pasting into the box, or attach a PDF.",
+            "After this there are two short closing questions about your use of AI."
+          ]
         },
         {
           "type": "h",
@@ -825,72 +801,85 @@
           ]
         }
       ]
+    },
+    "ai_use": {
+      "section": "Closing",
+      "heading": "How you used AI",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "You were welcome to use AI tools throughout this exercise. We are not testing whether you can complete it without them, but we expect the submission to include your own thinking and analysis, and we are interested in how you use them. Please cover these three points:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "What you used, and for which parts of the exercise.",
+            "What it got wrong, or where you disagreed with it.",
+            "What you checked independently."
+          ]
+        },
+        {
+          "type": "note",
+          "items": [
+            "If you did not use AI at all, say so here and write \"No AI used\" on the next screen."
+          ]
+        }
+      ]
+    },
+    "ai_transcripts": {
+      "section": "Closing",
+      "heading": "Your AI transcripts",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "If you used AI, attach the conversations you used, one PDF per conversation. This is required if you used AI: we read the transcripts alongside your answers."
+        },
+        {
+          "type": "note",
+          "title": "How to save a conversation as a PDF",
+          "items": [
+            "Open the conversation in ChatGPT, Claude, Gemini or whichever tool you used.",
+            "Press Ctrl+P (Cmd+P on a Mac) to open the print dialog.",
+            "Choose \"Save as PDF\" as the printer or destination, then save.",
+            "Repeat for each conversation. You can attach up to 8 files here."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "If your tool offers a share link for the conversation, you can paste the links into the box instead of attaching PDFs. If you did not use AI, write \"No AI used\" in the box."
+        }
+      ]
     }
   },
   "questions": [
     {
-      "id": "s1_option",
+      "id": "s1",
       "section": "s1",
       "brief": "stage1",
-      "type": "choice",
-      "prompt": "Which option do you recommend?",
-      "context": "Read the case above, then pick one. Stage 2 follows from this selection, and you will not be able to change it once you continue. You will write up your reasoning in the next step.",
+      "type": "decision",
+      "require": "either",
+      "accept": [
+        "pdf"
+      ],
+      "prompt": "Your Stage 1 submission",
+      "context": "Select the option you recommend and give your written response to Questions 1 to 4 above. Both are locked in together when you continue, and Stage 2 follows from your selection.",
+      "optionPrompt": "Which option do you recommend?",
+      "responsePrompt": "Your written response",
       "options": [
         {
           "label": "Option 1: Hold at the pilot footprint with a learning agenda, do not scale",
-          "next": "s1_response_a"
+          "next": "path_a_response"
         },
         {
           "label": "Option 2: Expand footprint within Nigeria",
-          "next": "s1_response_b"
+          "next": "path_b_response"
         },
         {
           "label": "Option 3: Maintain funded Nigeria footprint and expand into New Country",
-          "next": "s1_response_c"
+          "next": "path_c_response"
         }
-      ]
-    },
-    {
-      "id": "s1_response_a",
-      "section": "s1",
-      "brief": "stage1",
-      "type": "rich",
-      "require": "either",
-      "accept": [
-        "pdf"
       ],
-      "prompt": "Your Stage 1 response",
-      "context": "You recommended Option 1: Hold at the pilot footprint with a learning agenda, do not scale. Now answer Questions 1 to 4 above, making the case for that recommendation in Question 3. Choose one way to respond below: paste or type your answer, or attach a PDF.",
-      "maxLength": 24000,
-      "next": "path_a_response"
-    },
-    {
-      "id": "s1_response_b",
-      "section": "s1",
-      "brief": "stage1",
-      "type": "rich",
-      "require": "either",
-      "accept": [
-        "pdf"
-      ],
-      "prompt": "Your Stage 1 response",
-      "context": "You recommended Option 2: Expand footprint within Nigeria. Now answer Questions 1 to 4 above, making the case for that recommendation in Question 3. Choose one way to respond below: paste or type your answer, or attach a PDF.",
-      "maxLength": 24000,
-      "next": "path_b_response"
-    },
-    {
-      "id": "s1_response_c",
-      "section": "s1",
-      "brief": "stage1",
-      "type": "rich",
-      "require": "either",
-      "accept": [
-        "pdf"
-      ],
-      "prompt": "Your Stage 1 response",
-      "context": "You recommended Option 3: Maintain funded Nigeria footprint and expand into New Country. Now answer Questions 1 to 4 above, making the case for that recommendation in Question 3. Choose one way to respond below: paste or type your answer, or attach a PDF.",
-      "maxLength": 24000,
-      "next": "path_c_response"
+      "maxLength": 24000
     },
     {
       "id": "path_a_response",
@@ -902,7 +891,7 @@
         "pdf"
       ],
       "prompt": "Your Stage 2 response",
-      "context": "Answer the three items above. Choose one way to respond below: paste or type your answer, or attach a PDF.",
+      "context": "Answer the three items above. Type or paste your response, or attach a PDF.",
       "maxLength": 12000,
       "next": "ai_use"
     },
@@ -916,7 +905,7 @@
         "pdf"
       ],
       "prompt": "Your Stage 2 response",
-      "context": "Answer the three items above. Choose one way to respond below: paste or type your answer, or attach a PDF.",
+      "context": "Answer the three items above. Type or paste your response, or attach a PDF.",
       "maxLength": 12000,
       "next": "ai_use"
     },
@@ -930,21 +919,42 @@
         "pdf"
       ],
       "prompt": "Your Stage 2 response",
-      "context": "Answer the three items above. Choose one way to respond below: paste or type your answer, or attach a PDF.",
+      "context": "Answer the three items above. Type or paste your response, or attach a PDF.",
       "maxLength": 12000,
       "next": "ai_use"
     },
     {
       "id": "ai_use",
       "section": "s3",
+      "brief": "ai_use",
       "type": "rich",
       "require": "text",
-      "attachment": "optional",
+      "prompt": "How did you use AI in this exercise?",
+      "context": "Cover the three points above. A few short paragraphs or bullet points is fine.",
+      "maxLength": 4000
+    },
+    {
+      "id": "ai_transcripts",
+      "section": "s3",
+      "brief": "ai_transcripts",
+      "type": "rich",
+      "require": "either",
       "accept": [
         "pdf"
       ],
-      "prompt": "How did you use AI in this exercise?",
-      "context": "Cover both stages. What you used and for which parts, what it got wrong or where you disagreed with it, and what you checked independently. If you did not use AI, say so. If you did, and you can, attach the prompts you used or transcripts from your AI use as a PDF. This is the last question: submitting it completes the exercise.",
+      "maxFiles": 8,
+      "prompt": "Your AI transcripts",
+      "context": "Required if you used AI. Attach one PDF per conversation, or paste share links into the box. If you did not use AI, write \"No AI used\". This is the last question: submitting it completes the exercise.",
+      "modes": {
+        "text": {
+          "title": "Paste share links, or state that you did not use AI",
+          "sub": "One link per line. If you used no AI tools at all, write \"No AI used\"."
+        },
+        "file": {
+          "title": "Attach transcript PDFs",
+          "sub": "One PDF per conversation, up to 8 files, each up to 4.5 MB. Save each conversation with Ctrl+P or Cmd+P and choose Save as PDF."
+        }
+      },
       "maxLength": 4000,
       "next": null
     }

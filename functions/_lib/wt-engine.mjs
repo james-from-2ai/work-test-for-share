@@ -184,21 +184,37 @@ export function introFor(cfg) {
 
   rules.push({
     lead: 'We only accept your first submission.',
-    text: 'Coming back with the same email address returns you to this same session rather than starting a '
-      + 'new one.',
+    text: 'Reopening this link, or coming back with the same email address, returns you to this same session '
+      + 'rather than starting a new one. Submitted answers are saved on our server.',
   });
 
-  const anyRich = cfg.questions.some((q) => q.type === 'rich');
-  if (anyRich && !cfg.integrity.blockPaste) {
+  // One rule about how to answer, not three. Formatting, files and the either/or are all part of
+  // the same decision a candidate makes, so they are said together. An author can add a sentence
+  // (intro.submitNote) for what only they know: which tool to draft in, how to make a PDF.
+  const anyRich = cfg.questions.some((q) => q.type === 'rich' || q.type === 'decision');
+  const withFiles = cfg.questions.filter((q) => attachmentOf(q) !== 'none');
+  const submitNote = clamp(cfg.intro.submitNote, 500).trim();
+  const formatting = anyRich
+    ? (cfg.integrity.blockPaste
+      ? ' The boxes take headings, subheadings, bold, italic, underline and lists.'
+      : ' The boxes take headings, subheadings, bold, italic, underline and lists, and pasting from a document keeps that formatting.')
+    : '';
+  if (withFiles.length) {
+    const kinds = new Set(withFiles.flatMap((q) => acceptOf(q)));
+    const eitherOr = withFiles.some((q) => requireOf(q) === 'either');
+    const doc = describeAllowed([...kinds]);
+    const mb = (MAX_UPLOAD_BYTES / 1_000_000).toFixed(1);
     rules.push({
-      lead: 'You can format your answers.',
-      text: 'The answer boxes take headings, subheadings, bold, italic, underline and lists. Pasting from a '
-        + 'document keeps the formatting we support and drops the rest.',
+      lead: 'How to submit your answers.',
+      text: (eitherOr
+        ? `For each write-up you choose one of two ways: type or paste your answer into the box, or attach a ${doc} up to ${mb} MB. Either is enough on its own.`
+        : `Type your answers into the boxes. Some questions also take a ${doc}, up to ${mb} MB.`)
+        + formatting + (submitNote ? ` ${submitNote}` : ''),
     });
   } else if (anyRich) {
     rules.push({
       lead: 'You can format your answers.',
-      text: 'The answer boxes take headings, subheadings, bold, italic, underline and lists.',
+      text: formatting.trim() + (submitNote ? ` ${submitNote}` : ''),
     });
   }
 
@@ -206,18 +222,6 @@ export function introFor(cfg) {
     rules.push({
       lead: 'Pasting is switched off.',
       text: 'Answers have to be typed, including anything you worked out somewhere else.',
-    });
-  }
-
-  const withFiles = cfg.questions.filter((q) => attachmentOf(q) !== 'none');
-  if (withFiles.length) {
-    const kinds = new Set(withFiles.flatMap((q) => acceptOf(q)));
-    const eitherOr = withFiles.some((q) => requireOf(q) === 'either');
-    rules.push({
-      lead: 'Some answers take a file.',
-      text: `You can attach a ${describeAllowed([...kinds])}, up to `
-        + `${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB.`
-        + (eitherOr ? ' Where a question accepts either, writing it out or attaching a file is enough on its own.' : ''),
     });
   }
 
@@ -244,8 +248,8 @@ export function introFor(cfg) {
     || `${parts > 1 ? `${parts} parts, one question at a time.` : 'One question at a time.'} `
       + (cfg.navigation.edit ? 'You can go back and change answers.' : 'Answers are final once submitted.');
   const format = withFiles.length
-    ? `Type your answer in the box, or attach a ${describeAllowed([...new Set(withFiles.flatMap((q) => acceptOf(q)))])} `
-      + `(up to ${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB)${withFiles.some((q) => requireOf(q) === 'either') ? '. Either is enough.' : '.'}`
+    ? `Type or paste your answer, or attach a ${describeAllowed([...new Set(withFiles.flatMap((q) => acceptOf(q)))])} `
+      + `up to ${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB.`
     : `Typed answers${cfg.integrity.blockPaste ? ', no pasting' : ''}.`;
   const glance = [
     { label: 'Time', text: time },
@@ -316,7 +320,8 @@ function outroFor(rec, cfg, phase, revisable) {
   const plural = (n) => (n === 1 ? '' : 's');
 
   const outOfTime = phase === 'expired' || rec.ranOut;
-  const title = outOfTime ? 'Time is up' : 'Thank you, that is submitted';
+  const first = String(rec.name || '').trim().split(/\s+/)[0];
+  const title = outOfTime ? 'Time is up' : first ? `Thank you, ${first}. That is all submitted.` : 'Thank you, that is submitted';
 
   let body;
   if (outOfTime && skipped) {
@@ -427,6 +432,18 @@ export function newToken() {
 const maxLengthOf = (q) => q.maxLength
   || (q.type === 'short' ? 300 : q.type === 'upload' ? 120 : 2000);
 
+/** How many files a question takes: one unless the spec says more, and never more than ten. */
+const maxFilesOf = (q) => (Number.isInteger(q && q.maxFiles) && q.maxFiles > 1 ? Math.min(q.maxFiles, 10) : 1);
+
+/**
+ * The files attached to a question so far, always as a list. Single-file questions store one
+ * object and multi-file questions store an array; nothing outside this helper should care which.
+ */
+const filesOf = (rec, qid) => {
+  const u = rec && rec.uploads && rec.uploads[qid];
+  return Array.isArray(u) ? u.filter(Boolean) : u ? [u] : [];
+};
+
 /** The single whole-test duration, or null when there is no single clock to describe. */
 const durationFor = (cfg) => (cfg.timing.mode === 'total' ? cfg.timing.totalSec : null);
 
@@ -469,6 +486,13 @@ function publicQuestion(id, answers, cfg) {
     // Labels only. optionLabels is what stops a branching option from telling the candidate
     // where it leads.
     options: optionLabels(q),
+    // A decision question is an option and a write-up on one screen; these label the two halves.
+    ...(q.type === 'decision' ? {
+      optionPrompt: clamp(q.optionPrompt, 200).trim() || null,
+      responsePrompt: clamp(q.responsePrompt, 200).trim() || null,
+    } : {}),
+    // Author wording for the type-or-attach chooser, when the defaults do not fit the question.
+    ...(q.modes && typeof q.modes === 'object' ? { modes: q.modes } : {}),
     maxLength: maxLengthOf(q),
     placeholder: q.placeholder || null,
     brief: q.brief ? cfg.briefs[q.brief] || null : null,
@@ -481,6 +505,7 @@ function publicQuestion(id, answers, cfg) {
       acceptAttr: acceptAttribute(acceptOf(q)),
       acceptText: `Upload a ${describeAllowed(acceptOf(q))}, up to ${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB.`,
       maxBytes: MAX_UPLOAD_BYTES,
+      maxFiles: maxFilesOf(q),
     } : {}),
   };
 }
@@ -710,7 +735,11 @@ function view(rec, now, cfg, extra = {}) {
       out.question = publicQuestion(frontierId, rec.answers, cfg);
       // A file already uploaded for this question, so refreshing or coming back on another
       // device shows what is attached rather than an empty field they would upload to twice.
-      if (rec.uploads && rec.uploads[frontierId]) out.upload = rec.uploads[frontierId];
+      const attached = filesOf(rec, frontierId);
+      if (attached.length) {
+        out.upload = attached[attached.length - 1];
+        out.uploads = attached;
+      }
     } else {
       // Looking back at something already submitted. The question is rebuilt from the answers
       // that preceded it, so its numbering and its brief are what they were at the time.
@@ -846,12 +875,23 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
 
       const q = questionById(targetId, cfg.questions);
       if (!q) return view(rec, now, cfg, { rejected: 'out_of_order' });
-      const rich = q.type === 'rich';
+      const rich = q.type === 'rich' || q.type === 'decision';
       const max = maxLengthOf(q);
 
       let value;
       let choiceIndex;
-      if (rich) {
+      let choice;
+      if (q.type === 'decision') {
+        // One answer in two parts: the option, which decides the route and is recorded as an index
+        // plus its label, and the write-up, which is sanitized like any formatted answer.
+        const raw = body.value && typeof body.value === 'object' && !Array.isArray(body.value) ? body.value : {};
+        const labels = optionLabels(q) || [];
+        const pick = Number(raw.option);
+        if (!Number.isInteger(pick) || labels[pick] == null) return view(rec, now, cfg, { rejected: 'no_choice' });
+        choiceIndex = pick;
+        choice = labels[pick];
+        value = sanitizeRich(raw.text, max).blocks;
+      } else if (rich) {
         // Formatted answers arrive as blocks, never as HTML. See wt-rich.mjs for why.
         value = sanitizeRich(body.value, max).blocks;
       } else if (q.type === 'upload') {
@@ -880,7 +920,8 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       // Text and file are checked against one requirement rather than two independent flags,
       // because 'either' is not expressible as a pair of them: neither half is required on its
       // own, but leaving both empty is not an answer.
-      const hasFile = !!(rec.uploads && rec.uploads[q.id]);
+      const files = filesOf(rec, q.id);
+      const hasFile = files.length > 0;
       const hasText = !richIsEmpty(value);
       const need = requireOf(q);
       if ((need === 'file' || need === 'both') && !hasFile) return view(rec, now, cfg, { rejected: 'no_file' });
@@ -893,7 +934,8 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
           ...previous,
           value,
           ...(choiceIndex === undefined ? {} : { choiceIndex }),
-          ...(rec.uploads && rec.uploads[q.id] ? { upload: rec.uploads[q.id] } : {}),
+          ...(files.length ? { upload: files[0], uploads: files } : {}),
+          ...(choice ? { choice } : {}),
           skipped: false,
           revisedAt: now,
           revisions: (previous.revisions || 0) + 1,
@@ -940,7 +982,8 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         ...(choiceIndex === undefined ? {} : { choiceIndex }),
         // Copied onto the answer rather than only living in rec.uploads, so the CSV and the
         // admin page can read one row without cross-referencing anything.
-        ...(rec.uploads && rec.uploads[q.id] ? { upload: rec.uploads[q.id] } : {}),
+        ...(files.length ? { upload: files[0], uploads: files } : {}),
+        ...(choice ? { choice } : {}),
         // Lets the admin page and the CSV know how to read `value` without re-deriving it from
         // the question list, which may have been edited since this answer was written.
         format: rich ? 'rich' : 'text',
@@ -995,6 +1038,17 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         };
       }
 
+      const cap = maxFilesOf(q);
+      const existing = filesOf(rec, q.id);
+      if (cap > 1 && existing.length >= cap) {
+        return {
+          ok: false,
+          error: 'too_many_files',
+          status: 400,
+          detail: `This question takes up to ${cap} files, and ${cap} are already attached.`,
+        };
+      }
+
       const check = checkUpload({
         filename: body.filename,
         contentType: body.contentType,
@@ -1012,7 +1066,7 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       });
 
       rec.uploads = rec.uploads || {};
-      rec.uploads[q.id] = {
+      const entry = {
         filename: check.filename,
         size: check.size,
         kind: check.kind,
@@ -1020,8 +1074,10 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         attachmentId: (stored && stored.attachmentId) || null,
         recordId: (stored && stored.recordId) || null,
       };
+      // Single-file questions replace; multi-file questions accumulate, up to the cap above.
+      rec.uploads[q.id] = cap > 1 ? [...existing, entry] : entry;
       await store.put(KEY(token), rec);
-      return view(rec, now, cfg, { uploaded: rec.uploads[q.id] });
+      return view(rec, now, cfg, { uploaded: entry, uploads: filesOf(rec, q.id) });
     }
 
     case 'review': {
@@ -1040,6 +1096,8 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
           format: a.format || 'text',
           msSpent: a.msSpent,
           upload: a.upload || null,
+          uploads: Array.isArray(a.uploads) ? a.uploads : a.upload ? [a.upload] : [],
+          choice: a.choice || null,
           skipped: !!a.skipped,
         })),
       });
@@ -1269,8 +1327,11 @@ export function toCsv(rows) {
         // Formatted answers flatten to text with `##` and `-` markers kept, so the structure the
         // candidate chose survives into a spreadsheet cell.
         a.index + 1, a.id || '', a.prompt,
-        a.skipped ? '(not reached: time ran out on this part)' : richToText(a.value),
-        a.upload ? a.upload.filename : '', a.upload ? Math.round(a.upload.size / 1000) : '',
+        a.skipped ? '(not reached: time ran out on this part)'
+          : `${a.choice ? `Recommended: ${a.choice}\n` : ''}${richToText(a.value)}`,
+        (a.uploads || (a.upload ? [a.upload] : [])).map((f) => f.filename).join('; '),
+        (a.uploads || (a.upload ? [a.upload] : [])).length
+          ? Math.round((a.uploads || [a.upload]).reduce((n, f) => n + (f.size || 0), 0) / 1000) : '',
         Math.round(a.msSpent / 1000), richWordCount(a.value),
         a.pastes, a.blurs,
       ].map(esc).join(','));

@@ -336,7 +336,7 @@ test('format says what the questions actually accept', () => {
   const withPdf = introFor(make({
     questions: [{ id: 'a', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], prompt: 'A', next: null }],
   }));
-  assert.match(withPdf.glance[2].text, /attach a PDF \(up to 4\.5 MB\)\. Either is enough\.$/);
+  assert.match(withPdf.glance[2].text, /^Type or paste your answer, or attach a PDF up to 4\.5 MB\.$/);
   assert.ok(!/Word/.test(withPdf.glance[2].text), 'a PDF-only question must not promise Word');
 });
 
@@ -405,7 +405,8 @@ test('files are only mentioned when a question actually takes one', async () => 
   const plain = make();
   const [a] = await createCandidates(noFiles, [{ name: 'A', email: 'a@example.com' }]);
   const without = await handle(noFiles, { action: 'state', token: a.token }, T0, plain);
-  assert.equal(leads(without).includes('Some answers take a file.'), false);
+  assert.equal(leads(without).includes('How to submit your answers.'), false);
+  assert.equal(leads(without).includes('You can format your answers.'), false, 'plain text questions need no formatting rule');
 
   const withFiles = memStore();
   const cfg = config({
@@ -414,9 +415,24 @@ test('files are only mentioned when a question actually takes one', async () => 
   });
   const [b] = await createCandidates(withFiles, [{ name: 'B', email: 'b@example.com' }]);
   const res = await handle(withFiles, { action: 'state', token: b.token }, T0, cfg);
-  const rule = res.intro.rules.find((r) => r.lead === 'Some answers take a file.');
+  const rule = res.intro.rules.find((r) => r.lead === 'How to submit your answers.');
   assert.match(rule.text, /PDF/);
   assert.match(rule.text, /enough on its own/, 'did not explain what "either" means');
+  assert.match(rule.text, /headings, subheadings, bold/, 'formatting is folded into the same rule');
+  assert.equal(leads(res).includes('You can format your answers.'), false, 'formatting must not be a second rule');
+});
+
+test('the author\'s submit note rides on the submit rule', async () => {
+  const store = memStore();
+  const cfg = config({
+    sections: SECTIONS,
+    questions: [{ id: 'a', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], prompt: 'A', next: null }],
+    intro: { submitNote: 'Draft in Word first.' },
+  });
+  const [c] = await createCandidates(store, [{ name: 'A', email: 'a@example.com' }]);
+  const res = await handle(store, { action: 'state', token: c.token }, T0, cfg);
+  const rule = res.intro.rules.find((r) => r.lead === 'How to submit your answers.');
+  assert.match(rule.text, /Draft in Word first\.$/);
 });
 
 test('the author’s own rules and prose come through, after the generated ones', async () => {
@@ -707,4 +723,104 @@ test('blocking paste for the whole test reaches every question', async () => {
   // the page read that one instead, so a per-question override was silently ignored.
   assert.equal(res.question.blockPaste, true);
   assert.equal('blockPaste' in res, false, 'a test-wide flag is sent that the page could mistake for the question’s');
+});
+
+/* ------------------------------------------------------------ decision --------------- */
+
+const DECIDE = [
+  {
+    id: 'd', section: 'p1', type: 'decision', require: 'either', accept: ['pdf'], prompt: 'Decide and write it up',
+    options: [{ label: 'Hold', next: 'hold' }, { label: 'Grow', next: 'grow' }],
+  },
+  { id: 'hold', section: 'p2', type: 'short', prompt: 'Why hold?', next: null },
+  { id: 'grow', section: 'p2', type: 'short', prompt: 'Why grow?', next: null },
+];
+
+test('a decision question needs an option, then routes on it and keeps the write-up', async () => {
+  const store = memStore();
+  const cfg = config({ sections: SECTIONS, questions: DECIDE, timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const shown = await handle(store, { action: 'state', token }, T0 + 500, cfg);
+  assert.equal(shown.question.type, 'decision');
+  assert.deepEqual(shown.question.options, ['Hold', 'Grow'], 'labels only, never destinations');
+  assert.equal(shown.question.nextPart, 'Part 2');
+
+  const noPick = await handle(store, { action: 'answer', token, index: 0, questionId: 'd', value: { text: rich('words') } }, T0 + 1000, cfg);
+  assert.equal(noPick.rejected, 'no_choice');
+  const noText = await handle(store, { action: 'answer', token, index: 0, questionId: 'd', value: { option: 1, text: [] } }, T0 + 1000, cfg);
+  assert.equal(noText.rejected, 'need_one', 'an option alone is not an answer on an either question');
+
+  const ok = await handle(store, { action: 'answer', token, index: 0, questionId: 'd', value: { option: 1, text: rich('because growth') } }, T0 + 2000, cfg);
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(ok.question.id, 'grow', 'the option decided the route');
+
+  const review = await handle(store, { action: 'review', token }, T0 + 3000, cfg);
+  assert.equal(review.review[0].choice, 'Grow');
+  assert.equal(review.review[0].value[0].runs[0].t, 'because growth');
+});
+
+test('a decision question accepts a file instead of text, like any either question', async () => {
+  const store = memStore();
+  const cfg = config({ sections: SECTIONS, questions: DECIDE, timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const up = await handle(store, { action: 'upload', token, questionId: 'd', filename: 'memo.pdf', contentType: 'application/pdf', data: PDF }, T0 + 500, cfg);
+  assert.equal(up.ok, true, JSON.stringify(up));
+  const ok = await handle(store, { action: 'answer', token, index: 0, questionId: 'd', value: { option: 0, text: [] } }, T0 + 1000, cfg);
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(ok.question.id, 'hold');
+  const review = await handle(store, { action: 'review', token }, T0 + 2000, cfg);
+  assert.equal(review.review[0].uploads.length, 1);
+  assert.equal(review.review[0].choice, 'Hold');
+});
+
+test('a bogus option index is refused rather than routed anywhere', async () => {
+  const store = memStore();
+  const cfg = config({ sections: SECTIONS, questions: DECIDE, timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const res = await handle(store, { action: 'answer', token, index: 0, questionId: 'd', value: { option: 7, text: rich('x') } }, T0 + 1000, cfg);
+  assert.equal(res.rejected, 'no_choice');
+});
+
+/* ------------------------------------------------------------ several files ---------- */
+
+test('a question with maxFiles collects files up to the cap and hands them all to the answer', async () => {
+  const store = memStore();
+  const cfg = config({
+    sections: SECTIONS,
+    questions: [{ id: 't', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], maxFiles: 2, prompt: 'Transcripts', next: null }],
+    timing: { mode: 'none' },
+  });
+  const token = await started(store, cfg);
+  const one = await handle(store, { action: 'upload', token, questionId: 't', filename: 'a.pdf', contentType: 'application/pdf', data: PDF }, T0 + 500, cfg);
+  assert.equal(one.uploads.length, 1);
+  assert.equal(one.uploaded.filename, 'a.pdf');
+  const two = await handle(store, { action: 'upload', token, questionId: 't', filename: 'b.pdf', contentType: 'application/pdf', data: PDF }, T0 + 600, cfg);
+  assert.deepEqual(two.uploads.map((f) => f.filename), ['a.pdf', 'b.pdf'], 'the second file was added, not swapped in');
+  const three = await handle(store, { action: 'upload', token, questionId: 't', filename: 'c.pdf', contentType: 'application/pdf', data: PDF }, T0 + 700, cfg);
+  assert.equal(three.ok, false);
+  assert.equal(three.error, 'too_many_files');
+  assert.equal(store.files.length, 2, 'the refused file must not reach the store');
+
+  const back = await handle(store, { action: 'state', token }, T0 + 800, cfg);
+  assert.equal(back.uploads.length, 2, 'a refresh shows every file already attached');
+
+  const ok = await handle(store, { action: 'answer', token, index: 0, questionId: 't', value: [] }, T0 + 1000, cfg);
+  assert.equal(ok.phase, 'done');
+  const review = await handle(store, { action: 'review', token }, T0 + 2000, cfg);
+  assert.deepEqual(review.review[0].uploads.map((f) => f.filename), ['a.pdf', 'b.pdf']);
+  assert.equal(review.review[0].upload.filename, 'a.pdf', 'the single-file field still points at the first for older readers');
+});
+
+test('a single-file question still replaces rather than accumulates', async () => {
+  const store = memStore();
+  const cfg = config({
+    sections: SECTIONS,
+    questions: [{ id: 'f', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], prompt: 'One file', next: null }],
+    timing: { mode: 'none' },
+  });
+  const token = await started(store, cfg);
+  await handle(store, { action: 'upload', token, questionId: 'f', filename: 'a.pdf', contentType: 'application/pdf', data: PDF }, T0 + 500, cfg);
+  const two = await handle(store, { action: 'upload', token, questionId: 'f', filename: 'b.pdf', contentType: 'application/pdf', data: PDF }, T0 + 600, cfg);
+  assert.deepEqual(two.uploads.map((f) => f.filename), ['b.pdf']);
+  assert.equal(two.upload.filename, 'b.pdf');
 });

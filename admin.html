@@ -253,21 +253,38 @@ function openCandidate(r, base) {
       em.textContent = 'not reached: the time for this part ran out';
       body.append(em);
     } else {
-      renderAnswer(body, a.value);
+      // A decision question records the option picked alongside the write-up.
+      if (a.choice) {
+        const pick = document.createElement('p');
+        const strong = document.createElement('strong');
+        strong.textContent = 'Recommended: ';
+        pick.append(strong, document.createTextNode(a.choice));
+        body.append(pick);
+      }
+      const files = Array.isArray(a.uploads) && a.uploads.length ? a.uploads : a.upload ? [a.upload] : [];
+      if (files.length && (!Array.isArray(a.value) || !a.value.length) && !(typeof a.value === 'string' && a.value.trim())) {
+        const em = document.createElement('em');
+        em.className = 'muted';
+        em.textContent = 'answered with the file below, no text';
+        body.append(em);
+      } else {
+        renderAnswer(body, a.value);
+      }
     }
     sec.append(body);
 
-    if (a.upload) {
-      const f = document.createElement('p');
-      f.className = 'ans-file';
+    const files = Array.isArray(a.uploads) && a.uploads.length ? a.uploads : a.upload ? [a.upload] : [];
+    for (const f of files) {
+      const line = document.createElement('p');
+      line.className = 'ans-file';
       const ft = document.createElement('strong');
       ft.textContent = 'File: ';
-      f.append(ft, document.createTextNode(`${a.upload.filename} (${Math.round(a.upload.size / 1000)} KB)`));
+      line.append(ft, document.createTextNode(`${f.filename} (${Math.round(f.size / 1000)} KB)`));
       const note = document.createElement('span');
       note.className = 'muted';
-      note.textContent = '. Open it from the Files column on this candidate\u2019s Airtable row, and download it rather than previewing it: it came from outside.';
-      f.append(note);
-      sec.append(f);
+      note.textContent = `. In the Files column on this candidate\u2019s Airtable row as ${a.id}--${f.filename}. Download it rather than previewing it: it came from outside.`;
+      line.append(note);
+      sec.append(line);
     }
 
     const meta = document.createElement('p');
