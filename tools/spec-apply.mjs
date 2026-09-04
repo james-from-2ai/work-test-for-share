@@ -172,6 +172,13 @@ export const INTRO = ${lit(spec.intro || {})};
 export const OUTRO = ${lit(spec.outro || {})};
 
 /**
+ * The review-and-submit screen: the last step, where a candidate reads back everything they
+ * submitted and hands the exercise in. Nothing there can be changed and no answer is sent; the
+ * button ends the sitting. Omit this key and a test ends the moment the last answer lands.
+ */
+export const REVIEW = ${lit(spec.review || null)};
+
+/**
  * The parts of the task, in order, with how long each is expected to take. \`recommendedMin\`
  * drives the weighting of the progress bar, so a candidate can see which part is the bulk of
  * the work rather than counting questions and assuming the halfway question is the halfway

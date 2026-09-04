@@ -113,6 +113,29 @@
   </section>
 </template>
 
+<template id="tpl-review">
+  <section class="card">
+    <header class="bar">
+      <span class="progress"><span data-hook="section"></span></span>
+    </header>
+    <div class="track" data-hook="track" aria-hidden="true"></div>
+    <p class="track-note muted small" data-hook="tracknote"></p>
+
+    <h1 data-hook="heading">Review and submit</h1>
+    <p data-hook="body"></p>
+    <div class="review-list" data-hook="list"></div>
+    <div class="brief-note" data-hook="note" hidden></div>
+    <p class="err" data-hook="err" hidden></p>
+    <footer class="bar bottom">
+      <div class="actions" data-hook="actions"></div>
+      <div class="commit">
+        <span class="muted small" data-hook="finality"></span>
+        <button class="primary" data-hook="submit">Submit and finish</button>
+      </div>
+    </footer>
+  </section>
+</template>
+
 <template id="tpl-done">
   <section class="card">
     <h1 data-hook="title">Submitted</h1>

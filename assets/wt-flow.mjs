@@ -58,13 +58,61 @@ function pickedIndex(q, answer) {
   return labels.indexOf(String(answer.value == null ? '' : answer.value));
 }
 
-/** The id that follows `q` once it has been answered this particular way. */
 /** Which question types carry options that decide the route. */
 export const branches = (q) => !!q && (q.type === 'choice' || q.type === 'decision');
 
-export function nextIdAfter(q, answer, questions) {
+/**
+ * The question that sits between a branch point and the routes it chooses between, if any.
+ *
+ * A question declares `branchFrom: '<id>'` to say "I come after that branch point, and the
+ * option picked there decides where things go after me". It exists because a part can be
+ * followed by something asked of everyone before their branch opens: here, "how did you use AI
+ * in Stage 1" is asked between choosing an option and reading the Stage 2 brief for it. The
+ * alternative was a near-identical copy of that question on every branch, which is three places
+ * to keep the same wording right.
+ */
+export const detourFor = (q, questions) =>
+  (q && q.id && Array.isArray(questions) ? questions.find((x) => x && x.branchFrom === q.id) || null : null);
+
+/** Where each option of a branch point leads, as a list of ids. */
+function optionDestinations(src, questions) {
+  const out = [];
+  let anyFallsThrough = false;
+  for (const o of (Array.isArray(src.options) ? src.options : [])) {
+    if (o && typeof o === 'object' && o.next !== undefined) out.push(o.next);
+    else anyFallsThrough = true;
+  }
+  if (anyFallsThrough || !out.length) out.push(fallthroughId(src, questions));
+  return [...new Set(out)];
+}
+
+/**
+ * The id that follows `q` once it has been answered this particular way.
+ *
+ * `answers` is only needed by a detour question, whose route was decided by an option picked
+ * earlier. Callers that do not have the full list get the fallthrough, which is why
+ * currentQuestionId passes it.
+ */
+export function nextIdAfter(q, answer, questions, answers = null) {
   if (!q) return null;
+
+  // A detour resumes the route the branch point chose, so its own position in the array and any
+  // `next` it carries are irrelevant.
+  if (q.branchFrom) {
+    const src = questionById(q.branchFrom, questions);
+    const given = Array.isArray(answers) ? answers.find((a) => a && a.id === q.branchFrom) : null;
+    if (src && branches(src) && given) {
+      const opt = (Array.isArray(src.options) ? src.options : [])[pickedIndex(src, given)];
+      if (opt && typeof opt === 'object' && opt.next !== undefined) return opt.next;
+      return fallthroughId(src, questions);
+    }
+    return fallthroughId(q, questions);
+  }
+
   if (branches(q) && Array.isArray(q.options)) {
+    // The detour comes first; the option's destination is claimed by the detour, not here.
+    const detour = detourFor(q, questions);
+    if (detour) return detour.id;
     const opt = q.options[pickedIndex(q, answer)];
     if (opt && typeof opt === 'object' && opt.next !== undefined) return opt.next;
   }
@@ -73,15 +121,15 @@ export function nextIdAfter(q, answer, questions) {
 
 /** Every id a question could lead to, across all of its options. Used to look ahead. */
 export function outgoingIds(q, questions) {
+  if (q && q.branchFrom) {
+    const src = questionById(q.branchFrom, questions);
+    if (src && branches(src)) return optionDestinations(src, questions);
+    return [fallthroughId(q, questions)];
+  }
   if (branches(q) && Array.isArray(q.options) && q.options.length) {
-    const out = [];
-    let anyFallsThrough = false;
-    for (const o of q.options) {
-      if (o && typeof o === 'object' && o.next !== undefined) out.push(o.next);
-      else anyFallsThrough = true;
-    }
-    if (anyFallsThrough) out.push(fallthroughId(q, questions));
-    return [...new Set(out)];
+    const detour = detourFor(q, questions);
+    if (detour) return [detour.id];
+    return optionDestinations(q, questions);
   }
   return [fallthroughId(q, questions)];
 }
@@ -102,7 +150,7 @@ export function currentQuestionId(answers, questions) {
   const q = questionById(last.id, questions);
   if (!q) return null; // the question they last answered has been deleted from the spec
 
-  const next = nextIdAfter(q, last, questions);
+  const next = nextIdAfter(q, last, questions, answers);
   if (next == null) return null;
   if (answers.some((a) => a.id === next)) return null; // a loop; end rather than re-serve
   return questionById(next, questions) ? next : null;
@@ -216,6 +264,22 @@ export function validateFlow(questions) {
     } else if (Array.isArray(q.options) && q.options.some((o) => o && typeof o === 'object' && o.next !== undefined)) {
       // Branching on anything but a choice cannot work: there is no option to branch on.
       say('error', `"${q.id}" has options with destinations but is type "${q.type}", not "choice" or "decision".`);
+    }
+
+    if (q.branchFrom) {
+      const src = questionById(q.branchFrom, questions);
+      if (!src) {
+        say('error', `"${q.id}" comes after "${q.branchFrom}", which does not exist.`);
+      } else if (!branches(src)) {
+        say('error', `"${q.id}" comes after "${q.branchFrom}", which is type "${src.type}" and has no options to route on.`);
+      } else if (questions.filter((x) => x && x.branchFrom === q.branchFrom).length > 1) {
+        say('error', `More than one question comes after the branch at "${q.branchFrom}". Only one can.`);
+      }
+      // Its route is the branch point's to decide, so anything it says about its own is a
+      // contradiction an author would never see: the flow silently ignores it.
+      if (q.next !== undefined) {
+        say('error', `"${q.id}" comes after the branch at "${q.branchFrom}", so it cannot also set its own next.`);
+      }
     }
   }
 

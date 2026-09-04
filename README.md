@@ -65,8 +65,18 @@ Then open `/admin.html`, paste the admin key, and issue a link per candidate.
 - **Only a candidate's first submission counts**, keyed on their email. Deleting a candidate's
   row (Reset on the admin page, or delete the Airtable row) is how you grant a retake.
 - **Files** land in the `Files` attachment column of the candidate's Airtable row, named with the
-  question id. The readable `Answers` column says "File submitted: name" for a file-only answer.
-  Download them rather than previewing: they came from outside.
+  question id. The readable `Answers` column says "**File submitted:** name" for a file-only
+  answer. Download them rather than previewing: they came from outside.
+- **`Answers` is a rich text column**, and the server writes Markdown into it, so a candidate's own
+  headings, bold, italics and lists render in Airtable rather than showing their markers. Keep rich
+  text switched on for that column; with it off the same text is still readable, it just shows the
+  `##` and `-`. Airtable's API cannot turn rich text on for an existing column, which is why the
+  plain column it replaced is still there as `Answers (plain, retired)`, holding text from sessions
+  submitted before the switch and safe to delete. Underline is the one thing that does not survive:
+  Airtable rich text has no underline, so an underlined run keeps its text and loses the underline
+  rather than being dressed up as bold. The mirror columns are a convenience, not the record: if
+  one is renamed or deleted, the server falls back to writing `Key` and `Data` alone rather than
+  failing a candidate's save.
 - **CSV** from the admin page carries every answer, the route taken, time on each question, and
   file names and sizes.
 
@@ -76,28 +86,36 @@ Then open `/admin.html`, paste the admin key, and issue a link per candidate.
   hours across both stages (2 to 3 for Stage 1, 60 to 90 minutes for Stage 2). The progress bar
   shows those estimates; nothing counts down and nothing expires. Submitted answers are saved on
   the server, so a candidate can close the page and return to the same link.
-- **Gated and branching.** Stage 1 is one `decision` question: the whole case, the choice of
-  Option 1, 2 or 3, and the write-up on a single screen, locked in together. The option routes to
-  Path A, B or C for Stage 2. After Stage 2 comes one closing question: how the candidate used AI
-  (three bulleted points, a required written answer), then their conversations as labelled sections
-  beneath it: public share links first (with the OpenAI and Anthropic help pages linked), PDFs as
-  the fallback (up to 8), required if they used AI. A candidate never sees the destination of an
-  option before choosing it.
+- **Gated and branching.** Five screens, in this order: Stage 1, how AI was used in Stage 1,
+  Stage 2, how AI was used in Stage 2, then review and submit. Stage 1 is one `decision` question:
+  the whole case, the choice of Option 1, 2 or 3, and the write-up on a single screen, locked in
+  together. The option routes to Path A, B or C for Stage 2, and the Stage 1 AI question is asked
+  in between (`branchFrom` in the spec, so the wording lives in one place rather than being copied
+  onto each path). Each AI question asks three bulleted points with a required written answer, then
+  the conversations for that stage as labelled sections beneath it: public share links first (with
+  the OpenAI and Anthropic help pages linked), PDFs as the fallback (up to 8), required if they
+  used AI. A candidate never sees the destination of an option before choosing it.
+- **Review and submit.** The last screen reads every answer back, including attachments and share
+  links, and hands the exercise in on one deliberate red click. Nothing there can be changed and no
+  answer is sent from it: what it does is close the sitting, which is the thing a candidate
+  otherwise has no way to tell has happened.
 - **Look back, not change.** Candidates can re-read their Stage 1 submission while working on
   Stage 2, since the memo they are answering refers to it. They cannot edit it.
 - **Type it or attach it.** Each write-up question first asks how the candidate wants to respond,
   then shows only that input: the formatting editor, or a PDF upload (up to 4.5 MB, verified byte
   by byte). Word and Google Docs users are told to save as PDF, and everyone is advised to draft
   in a word processor so they keep their own copy. Word documents are not accepted on this test.
-- **AI use is allowed.** The disclosure the source document asks for is one closing question
-  after both stages rather than a paragraph at the end of each response, so a reviewer finds it
-  in one place, with the transcripts attached alongside.
+- **AI use is allowed.** The disclosure the source document asks for is a short question after
+  each stage, about that stage, rather than a paragraph at the end of each response, so a reviewer
+  finds it separated by stage with the transcripts attached alongside.
 - **Nothing is a surprise.** The instructions open with three short tiles (time, structure,
-  format) and six rules in one panel, the progress bar is a numbered stepper, the button that seals Stage 1
-  says "Lock in and continue to Stage 2" and cannot be pressed until the candidate ticks a
-  confirmation that their response covers every question (four in Stage 1, three in Stage 2),
-  enforced on the server as well, the final confirmation turns red, and the closing screen
-  greets the candidate by name. A light/dark toggle sits at the top right; without a choice the
+  format) and six rules in one panel, and the progress bar is a numbered stepper ending on the
+  review step. Sealing a stage takes two deliberate acts: a tick against a statement that the
+  response covers every question in it (four in Stage 1, three in Stage 2), which the server
+  enforces as well, and then a modal that repeats the statement and names what is about to be
+  recorded, the option selected and the PDF attached or the word count typed, with "Not yet, take
+  me back" alongside "Yes, lock it in". The final submission on the review screen turns red, and
+  the closing screen greets the candidate by name. A light/dark toggle sits at the top right; without a choice the
   page follows the device setting, and a choice is remembered in that browser only.
 
 ## Changing the test
@@ -187,7 +205,13 @@ A `decision` question is a choice and a formatted write-up on one screen, stored
 carry `modes` to reword the type-or-attach chooser, and `maxFiles` to take several files. When the
 file part is a section of its own, `attachmentPrompt` and `attachmentHelp` label it. A question can
 carry `confirm: "..."`, a statement the candidate must tick before the answer is accepted (the
-server refuses without `confirmed: true`, and the tick is recorded on the answer). A question can
+server refuses without `confirmed: true`, the tick is recorded on the answer, and the page shows a
+modal repeating the statement and what is about to be recorded before it sends anything). A
+question can carry `branchFrom: "<question id>"` to be asked between a branching question and the
+routes its options choose between; the branch point's own `next`, and any `next` on the detour, are
+then not used. The top-level `review` block turns the last screen on: `label`, `summary`,
+`recommendedMin` place it in the progress bar, and `heading`, `body`, `note`, `button`, `confirm`
+are its words. Remove the block and the exercise ends the moment the last answer lands. A question can
 also ask for web links with `links: { prompt, help, max, docs: [{ label, url }] }`: one per line,
 each checked to be an http(s) address (a bad line is refused so the candidate can fix it), stored
 with the answer, listed in review, the admin view, the CSV and the Airtable mirror. The `docs` are

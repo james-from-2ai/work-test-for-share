@@ -317,3 +317,50 @@ test('a choice answer is stored as its label, so the CSV reads as words not numb
   assert.equal(rows[0].answers[0].value, 'Pivot to a deeper pilot');
   assert.equal(rows[0].answers[0].choiceIndex, 1);
 });
+
+/* ------------------------------- a question between a branch and its routes -------- */
+
+const DETOURED = [
+  { id: 'pick', type: 'choice', options: [{ label: 'One', next: 'a' }, { label: 'Two', next: 'b' }] },
+  { id: 'mid', type: 'short', branchFrom: 'pick' },
+  { id: 'a', type: 'short', next: null },
+  { id: 'b', type: 'short', next: null },
+];
+
+test('a detour is served before the branch it belongs to opens, then hands the route back', () => {
+  assert.equal(currentQuestionId([], DETOURED), 'pick');
+  assert.equal(currentQuestionId([{ id: 'pick', choiceIndex: 1 }], DETOURED), 'mid');
+  assert.equal(currentQuestionId([{ id: 'pick', choiceIndex: 1 }, { id: 'mid' }], DETOURED), 'b');
+  assert.equal(currentQuestionId([{ id: 'pick', choiceIndex: 0 }, { id: 'mid' }], DETOURED), 'a');
+  assert.equal(currentQuestionId([{ id: 'pick', choiceIndex: 0 }, { id: 'mid' }, { id: 'a' }], DETOURED), null);
+
+  // Both routes are the same length, so a candidate can be told a total rather than a range.
+  assert.deepEqual(remainingRange('pick', DETOURED, []), { min: 3, max: 3, certain: true });
+  assert.deepEqual(validateFlow(DETOURED), []);
+});
+
+test('a detour that cannot work is an error an author sees rather than a candidate', () => {
+  const missing = validateFlow([{ id: 'x', type: 'short', branchFrom: 'nope', next: null }]);
+  assert.match(missing[0].message, /"x" comes after "nope", which does not exist/);
+
+  const notABranch = validateFlow([
+    { id: 'p', type: 'short' },
+    { id: 'x', type: 'short', branchFrom: 'p', next: null },
+  ]);
+  assert.ok(notABranch.some((p) => /no options to route on/.test(p.message)));
+
+  const alsoSetsNext = validateFlow([
+    { id: 'p', type: 'choice', options: [{ label: 'One', next: 'a' }] },
+    { id: 'x', type: 'short', branchFrom: 'p', next: 'a' },
+    { id: 'a', type: 'short', next: null },
+  ]);
+  assert.ok(alsoSetsNext.some((p) => /cannot also set its own next/.test(p.message)));
+
+  const twoOfThem = validateFlow([
+    { id: 'p', type: 'choice', options: [{ label: 'One', next: 'a' }] },
+    { id: 'x', type: 'short', branchFrom: 'p' },
+    { id: 'y', type: 'short', branchFrom: 'p' },
+    { id: 'a', type: 'short', next: null },
+  ]);
+  assert.ok(twoOfThem.some((p) => /More than one question comes after the branch/.test(p.message)));
+});

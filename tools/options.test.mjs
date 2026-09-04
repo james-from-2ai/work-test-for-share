@@ -898,3 +898,119 @@ test('a question without a confirmation statement is unaffected', async () => {
   assert.equal(res.ok, true);
   assert.equal(res.question.id, 'b');
 });
+
+/* -------------------------------------------------- a question between a branch --- */
+
+const DETOUR = [
+  { id: 'pick', section: 'p1', type: 'choice', prompt: 'Which?', options: [{ label: 'One', next: 'a1' }, { label: 'Two', next: 'a2' }] },
+  { id: 'mid', section: 'p1', type: 'short', prompt: 'Between', branchFrom: 'pick' },
+  { id: 'a1', section: 'p2', type: 'short', prompt: 'Path one', next: null },
+  { id: 'a2', section: 'p2', type: 'short', prompt: 'Path two', next: null },
+];
+
+test('a question can be asked between a branch and the route it chose', async () => {
+  const store = memStore();
+  const cfg = config({ sections: SECTIONS, questions: DETOUR, timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+
+  // Every route is the same length, so the candidate is told a total rather than a range.
+  const first = await handle(store, { action: 'state', token }, T0 + 100, cfg);
+  assert.equal(first.total, 3);
+  assert.equal(first.question.id, 'pick');
+
+  const after = await handle(store, { action: 'answer', token, index: 0, questionId: 'pick', value: 1 }, T0 + 200, cfg);
+  assert.equal(after.question.id, 'mid', 'the detour comes before the branch opens');
+
+  const resumed = await handle(store, { action: 'answer', token, index: 1, questionId: 'mid', value: 'in between' }, T0 + 300, cfg);
+  assert.equal(resumed.question.id, 'a2', 'and then the route the option chose');
+  assert.equal(resumed.question.nextPart, null, 'nothing follows it but the end');
+
+  const done = await handle(store, { action: 'answer', token, index: 2, questionId: 'a2', value: 'two' }, T0 + 400, cfg);
+  assert.equal(done.phase, 'done');
+});
+
+/* ---------------------------------------------------- review and submit ----------- */
+
+const REVIEW = {
+  label: 'Review and submit',
+  summary: 'Check what we received',
+  recommendedMin: 5,
+  heading: 'Review and submit',
+  body: 'This is what we hold.',
+  note: 'Submitting closes the exercise.',
+  button: 'Submit and finish',
+  confirm: 'Yes, submit everything',
+};
+
+test('with a review screen the last answer does not end the sitting', async () => {
+  const store = memStore();
+  const cfg = make({ timing: { mode: 'none' }, review: REVIEW });
+  const token = await started(store, cfg);
+
+  // The last question no longer claims to be the final submission: the review screen is.
+  const one = await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 100, cfg);
+  await handle(store, { action: 'answer', token, index: 1, value: 'b' }, T0 + 200, cfg);
+  const last = await handle(store, { action: 'state', token }, T0 + 250, cfg);
+  assert.equal(last.question.id, 'c');
+  assert.equal(last.question.isLast, false, 'a review screen follows, so this is not the last screen');
+  assert.equal(last.question.nextPart, 'Review and submit');
+  assert.equal(one.question.isLast, false);
+
+  const shown = await handle(store, { action: 'answer', token, index: 2, value: 'c' }, T0 + 300, cfg);
+  assert.equal(shown.phase, 'review');
+  assert.equal(shown.question, undefined, 'nothing on the review screen takes an answer');
+  assert.equal(shown.reviewScreen.heading, 'Review and submit');
+  assert.equal(shown.reviewScreen.button, 'Submit and finish');
+  assert.deepEqual(shown.reviewScreen.answers.map((a) => a.value), ['a', 'b', 'c']);
+  const stillOpen = await store.get(`c:${token}`);
+  assert.ok(!stillOpen.finishedAt, 'not finished until they hand it in');
+
+  // The bar carries the review step as a part of its own, and it is where they are.
+  const here = shown.progress.sections;
+  assert.equal(here.length, 3);
+  assert.equal(here[2].label, 'Review and submit');
+  assert.equal(here[2].isReview, true);
+  assert.equal(here[2].state, 'current');
+  assert.equal(shown.progress.sectionNumber, 3);
+
+  const finished = await handle(store, { action: 'submit', token }, T0 + 400, cfg);
+  assert.equal(finished.phase, 'done');
+  assert.equal(finished.outro.title, 'Thank you, Opt. That is all submitted.');
+  assert.equal((await store.get(`c:${token}`)).finishedAt, T0 + 400);
+  assert.equal(finished.progress.sections[2].state, 'done', 'the review step reads as done afterwards');
+
+  // Handing in twice is a double click, not an error.
+  const again = await handle(store, { action: 'submit', token }, T0 + 500, cfg);
+  assert.equal(again.phase, 'done');
+  assert.equal((await store.get(`c:${token}`)).finishedAt, T0 + 400, 'and it does not move the finish time');
+});
+
+test('without a review screen nothing changes: the last answer finishes the test', async () => {
+  const store = memStore();
+  const cfg = make({ timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 100, cfg);
+  await handle(store, { action: 'answer', token, index: 1, value: 'b' }, T0 + 200, cfg);
+  const last = await handle(store, { action: 'state', token }, T0 + 250, cfg);
+  assert.equal(last.question.isLast, true);
+  const done = await handle(store, { action: 'answer', token, index: 2, value: 'c' }, T0 + 300, cfg);
+  assert.equal(done.phase, 'done');
+  assert.equal(done.reviewScreen, undefined);
+  assert.equal((await store.get(`c:${token}`)).finishedAt, T0 + 300);
+});
+
+test('a sitting cut short by the clock is not sent to the review screen', async () => {
+  const store = memStore();
+  const cfg = make({ durationSec: 600, graceSec: 0, review: REVIEW });
+  const token = await started(store, cfg);
+  await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 100, cfg);
+  await handle(store, { action: 'answer', token, index: 1, value: 'b' }, T0 + 200, cfg);
+  await handle(store, { action: 'answer', token, index: 2, value: 'c' }, T0 + 300, cfg);
+
+  // Answered everything in time: the review screen is theirs.
+  assert.equal((await handle(store, { action: 'state', token }, T0 + 400, cfg)).phase, 'review');
+  // Then the clock runs out while they are reading it, and the sitting closes instead.
+  const late = await handle(store, { action: 'state', token }, T0 + 900 * 1000, cfg);
+  assert.equal(late.phase, 'done');
+  assert.equal(late.reviewScreen, undefined);
+});

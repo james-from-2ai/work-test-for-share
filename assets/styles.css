@@ -211,7 +211,10 @@ p { margin: 0 0 0.9rem; }
 .seg {
   position: relative;
   flex-basis: 0;
-  min-width: 7.5rem;
+  /* Wide enough that a short part's label is not clipped to nothing. The bar is weighted by how
+     long each part takes, and a five minute step next to a two and a half hour one would otherwise
+     be a sliver with an ellipsis where its name should be. */
+  min-width: 9.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -610,6 +613,57 @@ dialog.review::backdrop { background: rgba(0, 0, 0, 0.55); }
 .review-a h4 { font-size: 0.92rem; font-weight: 700; margin: 0.6rem 0 0.25rem; }
 .review-a ul, .review-a ol { margin: 0 0 0.6rem; padding-left: 1.4rem; }
 .review-a li { margin-bottom: 0.25rem; }
+
+/*
+ * The lock-in dialog: the last look before a part becomes unchangeable. Modal on purpose, and
+ * deliberately plain, so the only things competing for attention are what we are about to record
+ * and the two ways out of it.
+ */
+dialog.lockin {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--ink);
+  max-width: 34rem;
+  width: calc(100% - 2rem);
+  padding: 1.4rem 1.5rem 1.2rem;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+}
+dialog.lockin::backdrop { background: rgba(0, 0, 0, 0.55); }
+dialog.lockin h2 { font-size: 1.15rem; font-weight: 650; margin: 0 0 0.6rem; }
+.lockin-statement {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.85rem;
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg);
+  font-weight: 550;
+}
+.lockin-label { margin: 0 0 0.3rem; font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+.lockin-list { margin: 0 0 1rem; padding-left: 1.3rem; }
+.lockin-list li { margin-bottom: 0.25rem; }
+.lockin-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+
+/*
+ * The review-and-submit screen reads every answer back inside one panel, so the page reads as a
+ * record of what we hold rather than as another question waiting to be answered.
+ */
+.review-list {
+  margin: 1.3rem 0;
+  padding: 0 1.1rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.review-list .review-item:first-child { border-top: 0; }
+.review-list:empty { display: none; }
 
 .review-foot {
   position: sticky;

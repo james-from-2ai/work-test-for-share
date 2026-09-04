@@ -452,6 +452,7 @@ const lowerFirst = (t) => (t ? t.charAt(0).toLowerCase() + t.slice(1) : '');
 
 /** How many questions a part holds, or an honest refusal when the branch decides. */
 function countOf(s) {
+  if (s.isReview) return 'nothing to answer';
   if (s.total == null) return 'a number of questions that depends on your answers';
   return plural(s.total, 'question');
 }
@@ -500,7 +501,8 @@ function renderProgress(state, { preview = false } = {}) {
 
     const sub = document.createElement('div');
     sub.className = 'seg-sub';
-    sub.textContent = `about ${s.recommendedMin} min · ${s.total == null ? 'questions vary' : plural(s.total, 'question')}`;
+    sub.textContent = `about ${s.recommendedMin} min · ${s.isReview ? 'check and hand in'
+      : s.total == null ? 'questions vary' : plural(s.total, 'question')}`;
 
     seg.append(head, bar, sub);
     track.append(seg);
@@ -523,7 +525,9 @@ function renderProgress(state, { preview = false } = {}) {
   const here = progress.sections[progress.sectionNumber - 1];
   const rest = progress.sections.slice(progress.sectionNumber).filter((s) => s.state !== 'skipped');
   const parts = [];
-  if (here) {
+  if (here && here.isReview) {
+    parts.push(`${here.label} of ${progress.sectionTotal}: ${here.summary}. There is nothing left to answer.`);
+  } else if (here) {
     const where = here.total == null
       ? `Question ${progress.inSection} in this part`
       : `Question ${progress.inSection} of ${here.total} in this part`;
@@ -1057,7 +1061,7 @@ function attachmentField(q, state, field, onChange) {
   field.append(box);
   paint();
 
-  return { has: () => attached.length > 0, busy: () => busy };
+  return { has: () => attached.length > 0, busy: () => busy, list: () => attached.slice() };
 }
 
 /** What a question insists on, said the way a candidate would want to hear it. */
@@ -1601,6 +1605,26 @@ function renderQuestion(state) {
 
     if (q.isLast && !past && !armed && !confirmDiscard) return arm();
 
+    // A part that carries a confirmation statement is sealed here, so it gets one deliberate
+    // pause with what we are about to take spelled out.
+    if (q.confirm && !past && !confirmDiscard) {
+      const files = attachment ? attachment.list() : [];
+      const usingFile = mode === 'file' || (mode === null && files.length);
+      const textPart = q.type === 'decision' ? (value && value.text) : value;
+      const lines = [];
+      if (q.type === 'decision' && q.options && Number.isInteger(value && value.option)) {
+        lines.push(`Option selected: ${q.options[value.option]}`);
+      }
+      if (usingFile) for (const f of files) lines.push(`Attached: ${f.filename}${f.size ? ` (${kb(f.size)})` : ''}`);
+      if (!usingFile || !isBlank(textPart)) lines.push(`Typed response: ${plural(wordsOf(textPart), 'word')}`);
+      const ok = await confirmLockIn({
+        part: herePart ? herePart.label : null,
+        statement: q.confirm,
+        lines,
+      });
+      if (!ok) return;
+    }
+
     inFlight = true;
     next.disabled = true;
     next.textContent = 'Saving…';
@@ -1753,6 +1777,53 @@ function fileLine(upload) {
   return p;
 }
 
+/**
+ * One submitted answer, read back. Everything a candidate handed in travels with it: the option
+ * picked on a decision, any attachments, any links. Text goes through renderStoredAnswer, which
+ * builds elements rather than parsing markup, so a candidate's own words can never be anything
+ * but words.
+ */
+function reviewItem(a) {
+  const wrap = document.createElement('section');
+  wrap.className = 'review-item';
+  const q = document.createElement('p');
+  q.className = 'review-q';
+  q.textContent = `Question ${a.number}. ${a.prompt}`;
+  const body = document.createElement('div');
+  body.className = 'review-a';
+  const files = Array.isArray(a.uploads) && a.uploads.length ? a.uploads : a.upload ? [a.upload] : [];
+  if (a.choice) {
+    const pick = document.createElement('p');
+    pick.className = 'review-choice';
+    const strong = document.createElement('strong');
+    strong.textContent = 'Recommended: ';
+    pick.append(strong, document.createTextNode(a.choice));
+    body.append(pick);
+  }
+  renderStoredAnswer(body, a.value, {
+    blank: a.skipped ? 'Not reached: the time for this part ran out.' : files.length ? null : '(left blank)',
+  });
+  for (const f of files) body.append(fileLine(f));
+  if (Array.isArray(a.links) && a.links.length) {
+    const lbl = document.createElement('p');
+    lbl.className = 'review-choice';
+    const strong = document.createElement('strong');
+    strong.textContent = 'Links: ';
+    lbl.append(strong);
+    body.append(lbl);
+    const ul = document.createElement('ul');
+    ul.className = 'files-list';
+    for (const l of a.links) {
+      const li = document.createElement('li');
+      li.textContent = l;
+      ul.append(li);
+    }
+    body.append(ul);
+  }
+  wrap.append(q, body);
+  return wrap;
+}
+
 let reviewOpen = false;
 
 /**
@@ -1806,46 +1877,7 @@ async function openReview() {
     p.textContent = 'You have not submitted anything yet.';
     dlg.append(p);
   }
-  for (const a of answers) {
-    const wrap = document.createElement('section');
-    wrap.className = 'review-item';
-    const q = document.createElement('p');
-    q.className = 'review-q';
-    q.textContent = `Question ${a.number}. ${a.prompt}`;
-    const body = document.createElement('div');
-    body.className = 'review-a';
-    const files = Array.isArray(a.uploads) && a.uploads.length ? a.uploads : a.upload ? [a.upload] : [];
-    if (a.choice) {
-      const pick = document.createElement('p');
-      pick.className = 'review-choice';
-      const strong = document.createElement('strong');
-      strong.textContent = 'Recommended: ';
-      pick.append(strong, document.createTextNode(a.choice));
-      body.append(pick);
-    }
-    renderStoredAnswer(body, a.value, {
-      blank: a.skipped ? 'Not reached: the time for this part ran out.' : files.length ? null : '(left blank)',
-    });
-    for (const f of files) body.append(fileLine(f));
-    if (Array.isArray(a.links) && a.links.length) {
-      const lbl = document.createElement('p');
-      lbl.className = 'review-choice';
-      const strong = document.createElement('strong');
-      strong.textContent = 'Links: ';
-      lbl.append(strong);
-      body.append(lbl);
-      const ul = document.createElement('ul');
-      ul.className = 'files-list';
-      for (const l of a.links) {
-        const li = document.createElement('li');
-        li.textContent = l;
-        ul.append(li);
-      }
-      body.append(ul);
-    }
-    wrap.append(q, body);
-    dlg.append(wrap);
-  }
+  for (const a of answers) dlg.append(reviewItem(a));
 
   const foot = document.createElement('div');
   foot.className = 'review-foot';
@@ -1868,6 +1900,191 @@ function reviewButton(state) {
   b.textContent = `Review your ${plural(n, 'submitted answer')}`;
   b.addEventListener('click', () => openReview());
   return b;
+}
+
+/* --------------------------------------------------------------------- lock in ------- */
+
+/** Words in a formatted answer, counted the same way the live counter under the box does. */
+function wordsOf(value) {
+  const text = Array.isArray(value)
+    ? value.map((b) => (b.runs || []).map((r) => r.t || '').join('')).join(' ').trim()
+    : String(value == null ? '' : value).trim();
+  return text ? text.split(/\s+/).length : 0;
+}
+
+/**
+ * The last look before a part is sealed.
+ *
+ * The tick box above the button is the candidate's statement that their response covers every
+ * question in the part. This is the moment we act on it: it repeats the statement, says back what
+ * we are about to take (the option picked, and whether the response is typed or a PDF, named), and
+ * asks once. It is a modal because a part becoming unchangeable deserves an interruption, and
+ * because "I attached the wrong file" is the mistake it exists to catch.
+ *
+ * Resolves true to go ahead, false to go back to the question. Nothing is sent from here.
+ */
+function confirmLockIn({ part, statement, lines }) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement('dialog');
+    dlg.className = 'lockin';
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      dlg.close();
+      dlg.remove();
+      resolve(ok);
+    };
+
+    const h = document.createElement('h2');
+    h.textContent = part ? `Lock in ${part}?` : 'Lock in this answer?';
+    dlg.append(h);
+
+    const said = document.createElement('p');
+    said.className = 'lockin-statement';
+    said.textContent = statement;
+    dlg.append(said);
+
+    if (lines.length) {
+      const what = document.createElement('p');
+      what.className = 'lockin-label';
+      what.textContent = 'What we will record:';
+      const ul = document.createElement('ul');
+      ul.className = 'lockin-list';
+      for (const l of lines) {
+        const li = document.createElement('li');
+        li.textContent = l;
+        ul.append(li);
+      }
+      dlg.append(what, ul);
+    }
+
+    const warn = document.createElement('p');
+    warn.className = 'muted small';
+    warn.textContent = 'Once you continue, this part is final and cannot be changed.';
+    dlg.append(warn);
+
+    const foot = document.createElement('div');
+    foot.className = 'lockin-foot';
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'secondary';
+    back.textContent = 'Not yet, take me back';
+    back.addEventListener('click', () => finish(false));
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'primary danger';
+    go.textContent = 'Yes, lock it in';
+    go.addEventListener('click', () => finish(true));
+    foot.append(back, go);
+    dlg.append(foot);
+
+    // Escape means "not yet". The browser fires cancel for it, and closing without an answer
+    // would leave the caller waiting forever.
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(false); });
+    document.body.append(dlg);
+    dlg.showModal();
+    back.focus();
+  });
+}
+
+/* ---------------------------------------------------------------------- submit ------- */
+
+/**
+ * The last screen: everything submitted, read back, and one deliberate hand-in.
+ *
+ * Nothing here can be changed, and the button sends no answer. What it does is close the sitting,
+ * which is why the screen exists: a candidate who has just submitted their final answer otherwise
+ * has no way to tell whether the exercise is over or what we actually received.
+ */
+function renderReviewScreen(state) {
+  stopClock();
+  onQuestion = false;
+  deadline = null;
+  currentIndex = -1;
+  currentQid = null;
+  clearAllDrafts();
+  screen('review');
+
+  const r = state.reviewScreen || {};
+  const p = state.progress;
+  const here = p && p.sections ? p.sections.find((s) => s.state === 'current') : null;
+  hook('section').textContent = here && p ? `Step ${p.sectionNumber} of ${p.sectionTotal} · ${here.label}` : '';
+  renderProgress(state);
+
+  hook('heading').textContent = r.heading || 'Review and submit';
+  hook('body').textContent = r.body || '';
+
+  const list = hook('list');
+  const answers = Array.isArray(r.answers) ? r.answers : [];
+  if (!answers.length) {
+    const none = document.createElement('p');
+    none.className = 'muted';
+    none.textContent = 'We have nothing recorded against your name yet.';
+    list.append(none);
+  }
+  for (const a of answers) list.append(reviewItem(a));
+
+  if (r.note) {
+    const note = hook('note');
+    note.hidden = false;
+    const ul = document.createElement('ul');
+    const li = document.createElement('li');
+    li.textContent = r.note;
+    ul.append(li);
+    note.append(ul);
+  }
+
+  hook('finality').textContent = state.canRevise
+    ? 'Submitting closes the exercise.'
+    : 'Nothing can be changed after this.';
+
+  const btn = hook('submit');
+  const label = r.button || 'Submit and finish';
+  btn.textContent = label;
+
+  // The same deliberate pause the last question used to carry, moved here with the final click.
+  let armed = false;
+  const disarm = () => {
+    armed = false;
+    btn.classList.remove('danger');
+    btn.textContent = label;
+    const box = $('.confirm-final', app);
+    if (box) box.remove();
+  };
+  btn.addEventListener('click', async () => {
+    if (inFlight) return;
+    if (!armed) {
+      armed = true;
+      // Red, because this is the one click with nothing after it.
+      btn.classList.add('danger');
+      btn.textContent = r.confirm || 'Yes, submit everything';
+      const box = document.createElement('div');
+      box.className = 'confirm-final';
+      const msg = document.createElement('p');
+      msg.textContent = 'Once you submit, the exercise is finished and nothing can be changed.';
+      const notYet = document.createElement('button');
+      notYet.type = 'button';
+      notYet.className = 'secondary';
+      notYet.textContent = 'Not yet';
+      notYet.addEventListener('click', () => { disarm(); btn.focus(); });
+      box.append(msg, notYet);
+      hook('err').parentNode.insertBefore(box, hook('err'));
+      btn.focus();
+      return;
+    }
+    inFlight = true;
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+    const res = await api('submit');
+    inFlight = false;
+    if (isTransient(res)) {
+      btn.disabled = false;
+      btn.textContent = r.confirm || 'Yes, submit everything';
+      return showError(res.detail || RETRY_MSG);
+    }
+    render(res);
+  });
 }
 
 /* ------------------------------------------------------------------------ done ------- */
@@ -2026,6 +2243,7 @@ function render(state) {
     return renderQuestion(state);
   }
   if (state.phase === 'ready') return renderInstructions(state);
+  if (state.phase === 'review') return renderReviewScreen(state);
   return renderDone(state);
 }
 

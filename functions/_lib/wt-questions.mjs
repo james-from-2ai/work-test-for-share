@@ -14,11 +14,13 @@
  * is timed, because the doc says 'please use the time you need', and the suggested times are
  * shown instead; candidates can re-read their Stage 1 submission while working on Stage 2 but
  * cannot change it; responses are typed or attached as PDF only (Word and Google Docs users
- * are told to save as PDF); and the AI use disclosure is one closing question after both
- * stages (how AI was used, with the transcripts attached beneath it as a labelled section,
- * several files allowed) rather than a paragraph at the end of each response. Stage 1 is a
- * single 'decision' question: the option and the write-up on one screen, routed by the option.
- * The scenario is fictionalized by Evidence Action and the doc says so to the candidate.
+ * are told to save as PDF); and the AI use disclosure is a short question asked after each
+ * stage about that stage (how AI was used, with the transcripts beneath it as a labelled
+ * section, several files allowed) rather than a paragraph at the end of each response. The
+ * exercise ends on a review screen where the candidate reads back everything they submitted
+ * and hands it in; nothing on that screen can be changed. Stage 1 is a single 'decision'
+ * question: the option and the write-up on one screen, routed by the option. The scenario is
+ * fictionalized by Evidence Action and the doc says so to the candidate.
  *
  * These questions live server-side on purpose. The candidate's browser is only ever sent the
  * question it is currently on, plus the brief for the part it belongs to, and an option's
@@ -68,7 +70,7 @@ export const NAVIGATION = {
  */
 export const INTRO = {
     "estimate": "About 4 hours suggested: 2 to 3 for Stage 1, 1 to 1.5 for Stage 2.",
-    "structure": "Two stages, then one closing question on your use of AI.",
+    "structure": "Two stages, each with a short question on your use of AI, then a review screen.",
     "rules": [
       {
         "lead": "Two stages, in order.",
@@ -76,7 +78,7 @@ export const INTRO = {
       },
       {
         "lead": "You may use AI tools.",
-        "text": "We are not testing whether you can complete this exercise without them, but we expect your submission to include your own thinking and analysis, and we are interested in how you use them. After Stage 2 there is one final short question about how you used AI, with space to attach your transcripts. You do not need to write a disclosure inside your responses."
+        "text": "We are not testing whether you can complete this exercise without them, but we expect your submission to include your own thinking and analysis, and we are interested in how you use them. After each stage there is one short question about how you used AI in that stage, with space to share your conversations. You do not need to write a disclosure inside your responses."
       }
     ],
     "sections": [
@@ -98,6 +100,22 @@ export const OUTRO = {
   };
 
 /**
+ * The review-and-submit screen: the last step, where a candidate reads back everything they
+ * submitted and hands the exercise in. Nothing there can be changed and no answer is sent; the
+ * button ends the sitting. Omit this key and a test ends the moment the last answer lands.
+ */
+export const REVIEW = {
+    "label": "Review and submit",
+    "summary": "Check what we received",
+    "recommendedMin": 5,
+    "heading": "Review and submit",
+    "body": "Everything below is what we have received from you. Answers cannot be changed at this point, so this is a chance to check that each part arrived as you intended, including any PDFs you attached.",
+    "note": "Submitting closes the exercise. If something is missing or did not arrive as you intended, do not start again from a new link: reply to the email that sent you this one and tell us what happened.",
+    "button": "Submit and finish",
+    "confirm": "Yes, submit everything"
+  };
+
+/**
  * The parts of the task, in order, with how long each is expected to take. `recommendedMin`
  * drives the weighting of the progress bar, so a candidate can see which part is the bulk of
  * the work rather than counting questions and assuming the halfway question is the halfway
@@ -108,19 +126,13 @@ export const SECTIONS = [
       "id": "s1",
       "label": "Stage 1",
       "summary": "The Expansion Gate",
-      "recommendedMin": 150
+      "recommendedMin": 155
     },
     {
       "id": "s2",
       "label": "Stage 2",
       "summary": "Response to the program",
-      "recommendedMin": 75
-    },
-    {
-      "id": "s3",
-      "label": "Closing",
-      "summary": "Your use of AI",
-      "recommendedMin": 10
+      "recommendedMin": 80
     }
   ];
 
@@ -683,7 +695,33 @@ export const BRIEFS = {
           "items": [
             "Select the option you recommend.",
             "Give your written response to Questions 1 to 4: type or paste it, or attach a PDF.",
-            "Check the two match. When you continue, both are locked in together and Stage 2 appears."
+            "Check the two match. When you continue, both are locked in together, and a short question about your use of AI in Stage 1 follows before Stage 2 appears."
+          ]
+        }
+      ]
+    },
+    "ai_stage1": {
+      "section": "Stage 1 of 2",
+      "heading": "Your use of AI in Stage 1",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "You were welcome to use AI tools throughout Stage 1. We are not testing whether you can complete the exercise without them, but we expect the submission to include your own thinking and analysis, and we are interested in how you use them. Please cover these three points in the box below:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "What you used, and for which parts of Stage 1.",
+            "What it got wrong, or where you disagreed with it.",
+            "What you checked independently."
+          ]
+        },
+        {
+          "type": "note",
+          "items": [
+            "Below the box, share the conversations you used for Stage 1: a public share link for each one (preferred), or a PDF if a link is not possible. This is required if you used AI.",
+            "If you did not use AI in Stage 1, say so in the box and leave the link and file sections empty.",
+            "Stage 2 appears once you submit this."
           ]
         }
       ]
@@ -699,7 +737,7 @@ export const BRIEFS = {
             "Your Stage 1 response is submitted and cannot be revised. You can re-read it with the Review link below.",
             "We suggest spending 1 to 1.5 hours on this part.",
             "Respond by typing or pasting into the box, or attach a PDF.",
-            "After you submit this part, there will be one final short question about your use of AI during this exercise."
+            "After you submit this part there is one short question about how you used AI in Stage 2, and then a screen to review everything and hand it in."
           ]
         },
         {
@@ -754,7 +792,7 @@ export const BRIEFS = {
             "Your Stage 1 response is submitted and cannot be revised. You can re-read it with the Review link below.",
             "We suggest spending 1 to 1.5 hours on this part.",
             "Respond by typing or pasting into the box, or attach a PDF.",
-            "After you submit this part, there will be one final short question about your use of AI during this exercise."
+            "After you submit this part there is one short question about how you used AI in Stage 2, and then a screen to review everything and hand it in."
           ]
         },
         {
@@ -809,7 +847,7 @@ export const BRIEFS = {
             "Your Stage 1 response is submitted and cannot be revised. You can re-read it with the Review link below.",
             "We suggest spending 1 to 1.5 hours on this part.",
             "Respond by typing or pasting into the box, or attach a PDF.",
-            "After you submit this part, there will be one final short question about your use of AI during this exercise."
+            "After you submit this part there is one short question about how you used AI in Stage 2, and then a screen to review everything and hand it in."
           ]
         },
         {
@@ -877,18 +915,18 @@ export const BRIEFS = {
         }
       ]
     },
-    "closing": {
-      "section": "Closing",
-      "heading": "Your use of AI during this exercise",
+    "ai_stage2": {
+      "section": "Stage 2 of 2",
+      "heading": "Your use of AI in Stage 2",
       "blocks": [
         {
           "type": "p",
-          "text": "You were welcome to use AI tools throughout. We are not testing whether you can complete the exercise without them, but we expect the submission to include your own thinking and analysis, and we are interested in how you use them. Please cover these three points in the box below:"
+          "text": "You were welcome to use AI tools throughout Stage 2. We are not testing whether you can complete the exercise without them, but we expect the submission to include your own thinking and analysis, and we are interested in how you use them. Please cover these three points in the box below:"
         },
         {
           "type": "list",
           "items": [
-            "What you used, and for which parts of the exercise.",
+            "What you used, and for which parts of Stage 2.",
             "What it got wrong, or where you disagreed with it.",
             "What you checked independently."
           ]
@@ -896,8 +934,9 @@ export const BRIEFS = {
         {
           "type": "note",
           "items": [
-            "Below the box, share the conversations you used: a public share link for each one (preferred), or a PDF if a link is not possible. This is required if you used AI.",
-            "If you did not use AI at all, say so in the box and leave the link and file sections empty."
+            "Below the box, share the conversations you used for Stage 2: a public share link for each one (preferred), or a PDF if a link is not possible. This is required if you used AI.",
+            "If you did not use AI in Stage 2, say so in the box and leave the link and file sections empty.",
+            "After this you get one screen to read back everything you submitted and hand the exercise in."
           ]
         }
       ]
@@ -920,7 +959,7 @@ export const QUESTIONS = [
         "pdf"
       ],
       "prompt": "Your Stage 1 submission",
-      "context": "Select the option you recommend and give your written response to Questions 1 to 4 above. Both are locked in together when you continue, and Stage 2 follows from your selection.",
+      "context": "Select the option you recommend and give your written response to Questions 1 to 4 above. Both are locked in together when you continue, and your selection decides which Stage 2 you receive.",
       "optionPrompt": "Which option do you recommend?",
       "responsePrompt": "Your written response",
       "options": [
@@ -941,6 +980,39 @@ export const QUESTIONS = [
       "confirm": "I confirm my response answers all four questions (1 to 4), whether typed above or in the PDF I attached, and that it supports the option I selected."
     },
     {
+      "id": "ai_stage1",
+      "type": "rich",
+      "section": "s1",
+      "brief": "ai_stage1",
+      "branchFrom": "s1",
+      "require": "text",
+      "attachment": "optional",
+      "accept": [
+        "pdf"
+      ],
+      "maxFiles": 8,
+      "prompt": "How did you use AI in Stage 1?",
+      "context": "Cover the three points above for Stage 1, then share the conversations you used below. Stage 2 appears once you submit this.",
+      "attachmentPrompt": "Or attach transcript PDFs",
+      "attachmentHelp": "If a share link is not possible, save each conversation as a PDF: open it, press Ctrl+P (Cmd+P on a Mac), and choose Save as PDF. One PDF per conversation, up to 8 files, each up to 4.5 MB.",
+      "maxLength": 4000,
+      "links": {
+        "prompt": "Share links to your Stage 1 AI conversations (preferred)",
+        "help": "For each conversation you used, create a public share link and paste it here, one per line. In Claude: open the chat, click Share, set the visibility to Public, and copy the link. In ChatGPT: click the share button at the top right of the chat (or share it from the sidebar), create the link, and copy it. Links made in a ChatGPT Business, Enterprise or Edu workspace only open for members of that workspace, so use the PDF option below if that is you.",
+        "max": 10,
+        "docs": [
+          {
+            "label": "Sharing a Claude chat (Anthropic help)",
+            "url": "https://support.claude.com/en/articles/10593882-share-and-unshare-chats"
+          },
+          {
+            "label": "Sharing a ChatGPT conversation (OpenAI help)",
+            "url": "https://help.openai.com/en/articles/7925741-chatgpt-shared-links"
+          }
+        ]
+      }
+    },
+    {
       "id": "path_a_response",
       "section": "s2",
       "brief": "path_a",
@@ -952,7 +1024,7 @@ export const QUESTIONS = [
       "prompt": "Your Stage 2 response",
       "context": "Answer the three items above. Type or paste your response, or attach a PDF.",
       "maxLength": 12000,
-      "next": "ai_use",
+      "next": "ai_stage2",
       "confirm": "I confirm my response covers all three items (Questions 1 to 3), whether typed above or in the PDF I attached."
     },
     {
@@ -967,7 +1039,7 @@ export const QUESTIONS = [
       "prompt": "Your Stage 2 response",
       "context": "Answer the three items above. Type or paste your response, or attach a PDF.",
       "maxLength": 12000,
-      "next": "ai_use",
+      "next": "ai_stage2",
       "confirm": "I confirm my response covers all three items (Questions 1 to 3), whether typed above or in the PDF I attached."
     },
     {
@@ -982,28 +1054,28 @@ export const QUESTIONS = [
       "prompt": "Your Stage 2 response",
       "context": "Answer the three items above. Type or paste your response, or attach a PDF.",
       "maxLength": 12000,
-      "next": "ai_use",
+      "next": "ai_stage2",
       "confirm": "I confirm my response covers all three items (Questions 1 to 3), whether typed above or in the PDF I attached."
     },
     {
-      "id": "ai_use",
-      "section": "s3",
-      "brief": "closing",
+      "id": "ai_stage2",
       "type": "rich",
+      "section": "s2",
+      "brief": "ai_stage2",
+      "next": null,
       "require": "text",
       "attachment": "optional",
       "accept": [
         "pdf"
       ],
       "maxFiles": 8,
-      "prompt": "How did you use AI in this exercise?",
-      "context": "Cover the three points above in the box, then share the conversations you used below. This is the last question: submitting it completes the exercise.",
+      "prompt": "How did you use AI in Stage 2?",
+      "context": "Cover the three points above for Stage 2, then share the conversations you used below. After this you review everything and hand it in.",
       "attachmentPrompt": "Or attach transcript PDFs",
       "attachmentHelp": "If a share link is not possible, save each conversation as a PDF: open it, press Ctrl+P (Cmd+P on a Mac), and choose Save as PDF. One PDF per conversation, up to 8 files, each up to 4.5 MB.",
       "maxLength": 4000,
-      "next": null,
       "links": {
-        "prompt": "Share links to your AI conversations (preferred)",
+        "prompt": "Share links to your Stage 2 AI conversations (preferred)",
         "help": "For each conversation you used, create a public share link and paste it here, one per line. In Claude: open the chat, click Share, set the visibility to Public, and copy the link. In ChatGPT: click the share button at the top right of the chat (or share it from the sidebar), create the link, and copy it. Links made in a ChatGPT Business, Enterprise or Edu workspace only open for members of that workspace, so use the PDF option below if that is you.",
         "max": 10,
         "docs": [

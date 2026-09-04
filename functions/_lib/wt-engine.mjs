@@ -35,6 +35,7 @@
 
 import {
   QUESTIONS, BRIEFS, SECTIONS, DURATION_SEC, GRACE_SEC, INTEGRITY, TIMING, NAVIGATION, INTRO, OUTRO,
+  REVIEW,
 } from './wt-questions.mjs';
 import { sanitizeRich, richIsEmpty, richToText, richWordCount } from './wt-rich.mjs';
 import {
@@ -74,8 +75,8 @@ export function config(overrides = {}) {
   // reads everything from the compiled module.
   const fromSpec = Array.isArray(overrides.questions) && overrides.questions.length > 0;
   const base = fromSpec
-    ? { timing: { mode: 'total' }, navigation: { back: false, edit: false }, integrity: { blockPaste: false }, intro: {}, outro: {}, briefs: {} }
-    : { timing: TIMING, navigation: NAVIGATION, integrity: INTEGRITY, intro: INTRO || {}, outro: OUTRO || {}, briefs: BRIEFS };
+    ? { timing: { mode: 'total' }, navigation: { back: false, edit: false }, integrity: { blockPaste: false }, intro: {}, outro: {}, briefs: {}, review: null }
+    : { timing: TIMING, navigation: NAVIGATION, integrity: INTEGRITY, intro: INTRO || {}, outro: OUTRO || {}, briefs: BRIEFS, review: REVIEW || null };
   return {
     durationSec: Number.isFinite(d) && d > 0 ? Math.floor(d) : DURATION_SEC,
     graceSec: Number.isFinite(g) && g >= 0 ? Math.floor(g) : GRACE_SEC,
@@ -115,8 +116,43 @@ export function config(overrides = {}) {
     },
     intro: overrides.intro && typeof overrides.intro === 'object' ? overrides.intro : base.intro,
     outro: overrides.outro && typeof overrides.outro === 'object' ? overrides.outro : base.outro,
+    // A last screen between the final answer and the closing one, where the candidate reads back
+    // everything they submitted and hands the whole thing in deliberately. Null means the test
+    // ends the moment the last answer lands, which is how every test behaved before this existed.
+    review: reviewOf(overrides.review !== undefined ? overrides.review : base.review),
   };
 }
+
+/**
+ * The review-and-submit screen's settings, or null when a test does not have one.
+ *
+ * Worth being clear about what this screen is and is not. Every answer is already final when it
+ * arrives here: nothing on it can be changed, and the button does not send any answer. What it
+ * does is end the sitting, which is why it is worth having anyway. A candidate who has just
+ * submitted their last answer has no way to tell whether the exercise is over, and this screen
+ * both shows them what we received and lets them say they are done.
+ */
+function reviewOf(r) {
+  if (!r || typeof r !== 'object' || r.enabled === false) return null;
+  const mins = Number(r.recommendedMin);
+  return {
+    // Shown in the progress bar as the last step, and on the button that leads here.
+    label: clamp(r.label, 60).trim() || 'Review and submit',
+    summary: clamp(r.summary, 120).trim() || null,
+    recommendedMin: Number.isFinite(mins) && mins > 0 ? Math.floor(mins) : 5,
+    heading: clamp(r.heading, 200).trim() || 'Review and submit',
+    body: clamp(r.body, 1200).trim() || null,
+    note: clamp(r.note, 1200).trim() || null,
+    button: clamp(r.button, 80).trim() || 'Submit final answer',
+    confirm: clamp(r.confirm, 80).trim() || 'Yes, submit everything',
+  };
+}
+
+/**
+ * The id of the synthetic part the review screen occupies in the progress bar. Underscored so it
+ * cannot collide with a part an author named.
+ */
+const REVIEW_SECTION = '__review';
 
 /**
  * The rules shown on the instructions page, worked out from what the test is actually set to do.
@@ -355,6 +391,29 @@ function outroFor(rec, cfg, phase, revisable) {
   };
 }
 
+/**
+ * Everything a candidate has submitted, as the page reads it back to them. Used by the review
+ * dialog and by the review-and-submit screen, so the two can never disagree about what we hold.
+ *
+ * An attachment is part of an answer and has to travel with it: leaving it out showed a candidate
+ * who submitted a PDF and no text "(left blank)" against their own work, which is alarming in
+ * exactly the situation where being alarmed is most costly.
+ */
+function submitted(rec) {
+  return (rec.answers || []).map((a) => ({
+    number: a.index + 1,
+    prompt: a.prompt,
+    value: a.value,
+    format: a.format || 'text',
+    msSpent: a.msSpent,
+    upload: a.upload || null,
+    uploads: Array.isArray(a.uploads) ? a.uploads : a.upload ? [a.upload] : [],
+    choice: a.choice || null,
+    links: Array.isArray(a.links) ? a.links : [],
+    skipped: !!a.skipped,
+  }));
+}
+
 /* ------------------------------------------------------------ per-question rules ---- */
 
 /**
@@ -409,7 +468,11 @@ const sectionIdOf = (q, cfg) => (q && q.section) || cfg.sections[0].id;
 /** The label of the part every route out of `q` leads into, if that is one part and not this one. */
 function nextPartOf(q, cfg) {
   const ids = outgoingIds(q, cfg.questions);
-  if (!ids.length || ids.some((id) => !id)) return null;
+  if (!ids.length) return null;
+  // Every route out of here ends the questions. On a test with a review screen that is where they
+  // go next, so the button can say so instead of claiming to be the final submission.
+  if (ids.every((id) => !id)) return cfg.review ? cfg.review.label : null;
+  if (ids.some((id) => !id)) return null;
   const parts = new Set(ids.map((id) => sectionIdOf(questionById(id, cfg.questions), cfg)));
   if (parts.size !== 1) return null;
   const [partId] = parts;
@@ -503,7 +566,10 @@ function publicQuestion(id, answers, cfg) {
     // give, and a guessed one would move under the candidate as they answer, which is the exact
     // thing a progress indicator exists to prevent.
     total: ahead.certain ? answered + ahead.max : null,
-    isLast: ahead.max <= 1,
+    // "Nothing else takes an answer after this", which is not the same as "this is the last
+    // screen": a review step still follows, and the client uses this to decide whether to arm
+    // the deliberate final confirmation.
+    isLast: ahead.max <= 1 && !cfg.review,
     // The part this answer leads into, when every route out of here agrees and it is a different
     // part. The page uses it to say "continue to Stage 2" on the button that seals Stage 1, so a
     // candidate is never surprised by which click closed a part. A choice whose options lead to
@@ -560,24 +626,37 @@ const acceptOf = (q) => (Array.isArray(q.accept) && q.accept.length ? q.accept :
  * Safe to send in full. It describes the shape of the task, which the instructions page already
  * states outright, and never the content of a question the candidate has not reached.
  */
-function progressOf(answers, currentId, cfg) {
+function progressOf(answers, currentId, cfg, phase = 'running') {
   const questions = cfg.questions;
-  const allSections = cfg.sections;
   const inSection = (q) => sectionIdOf(q, cfg);
   const answeredIds = answers.map((a) => a.id);
-  const ahead = sectionOutlook(currentId, questions, answeredIds, inSection, allSections.map((s) => s.id));
+  const ahead = sectionOutlook(currentId, questions, answeredIds, inSection, cfg.sections.map((s) => s.id));
   const hereId = currentId == null ? null : inSection(questionById(currentId, questions));
+
+  // The review screen holds no questions, so it cannot be counted the way the others are. It is
+  // appended here rather than living in cfg.sections because the parts of the test are the
+  // author's list and this step is the engine's.
+  const allSections = cfg.review
+    ? [...cfg.sections, {
+      id: REVIEW_SECTION,
+      label: cfg.review.label,
+      summary: cfg.review.summary,
+      recommendedMin: cfg.review.recommendedMin,
+      isReview: true,
+    }]
+    : cfg.sections;
 
   let current = -1;
   const sections = allSections.map((s, i) => {
     const done = answers.filter((a) => inSection(questionById(a.id, questions)) === s.id).length;
     const up = ahead.get(s.id) || { min: 0, max: 0, certain: true };
-    const holdsCurrent = hereId === s.id;
+    const holdsCurrent = s.isReview ? phase === 'review' : hereId === s.id;
     if (holdsCurrent) current = i;
 
     // A branch can route around an entire part. Calling that part 'todo' would be a lie, and
     // calling it 'done' would be a different one, so it gets its own state.
     const state = holdsCurrent ? 'current'
+      : s.isReview ? (phase === 'done' || phase === 'expired' ? 'done' : 'todo')
       : up.max > 0 ? 'todo'
       : done ? 'done'
       : 'skipped';
@@ -587,6 +666,9 @@ function progressOf(answers, currentId, cfg) {
       label: s.label,
       summary: s.summary,
       recommendedMin: s.recommendedMin,
+      // The review step holds no questions, so the page has to describe it differently rather
+      // than reporting "0 questions" against it.
+      ...(s.isReview ? { isReview: true } : {}),
       // Only set in section mode, and it is what the client draws a per-part clock from.
       limitMin: cfg.timing.mode === 'section' && cfg.timing.limits[s.id]
         ? Math.round(cfg.timing.limits[s.id] / 60)
@@ -597,7 +679,7 @@ function progressOf(answers, currentId, cfg) {
       // Worked out here rather than in the page, because when the total is uncertain the honest
       // denominator is the shortest route still ahead, and that is not the client's business.
       fill: state === 'done' ? 100
-        : state === 'skipped' ? 0
+        : state === 'skipped' || s.isReview ? 0
         : Math.round((done / Math.max(1, done + up.min)) * 100),
     };
   });
@@ -708,7 +790,17 @@ function phaseOf(rec, now, cfg) {
   if (!rec.startedAt) return 'ready';
   // Finished means "this candidate's route has no next question", which with branching can
   // happen at very different answer counts for two people sitting the same test.
-  if (!currentQuestionId(rec.answers, cfg.questions)) return 'done';
+  if (!currentQuestionId(rec.answers, cfg.questions)) {
+    // Out of questions. On a test with a review screen the sitting is not over until the
+    // candidate hands it in there, unless a clock has already closed it for them: being asked to
+    // review at leisure something that has just been cut short would be a strange thing to do.
+    if (!cfg.review || rec.ranOut) return 'done';
+    if (cfg.timing.mode === 'total') {
+      const spent = deadlineOf(rec, cfg, null);
+      if (spent != null && now > spent + cfg.graceSec * 1000) return 'done';
+    }
+    return 'review';
+  }
   // Only a whole-test clock can expire a sitting. An untimed test never does, and in section
   // mode a spent clock moves the candidate on rather than ending things, which settleSections
   // has already applied by the time anything asks.
@@ -798,15 +890,22 @@ function view(rec, now, cfg, extra = {}) {
     // Anchored on the question being LOOKED AT, not the frontier. After the route ends the frontier
     // is null, and progress built against it had no current part, which the page could not draw.
     // It is also simply more truthful: "Part 2 of 3" should describe the question on screen.
-    out.progress = progressOf(rec.answers, looking === null ? frontierId : shownId, cfg);
+    out.progress = progressOf(rec.answers, looking === null ? frontierId : shownId, cfg, phase);
+  }
+  if (phase === 'review') {
+    out.progress = progressOf(rec.answers, null, cfg, phase);
+    out.reviewScreen = { ...cfg.review, answers: submitted(rec) };
   }
   // On the instructions screen there is no current question, but the shape of the task is
   // exactly what someone deciding whether to press start wants to see.
   if (phase === 'ready') {
-    out.progress = progressOf([], firstQuestionId(cfg.questions), cfg);
+    out.progress = progressOf([], firstQuestionId(cfg.questions), cfg, phase);
     out.intro = introFor(cfg);
   }
-  if (phase === 'done' || phase === 'expired') out.outro = outroFor(rec, cfg, phase, revisable);
+  if (phase === 'done' || phase === 'expired') {
+    out.outro = outroFor(rec, cfg, phase, revisable);
+    if (!out.progress) out.progress = progressOf(rec.answers, null, cfg, phase);
+  }
   return out;
 }
 
@@ -991,9 +1090,6 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
           ...(choice ? { choice } : {}),
           ...(links && links.length ? { links } : {}),
           ...(needsConfirm ? { confirmed: true } : {}),
-          ...(links && links.length ? { links } : {}),
-        ...(needsConfirm ? { confirmed: true } : {}),
-          ...(needsConfirm ? { confirmed: true } : {}),
           skipped: false,
           revisedAt: now,
           revisions: (previous.revisions || 0) + 1,
@@ -1059,8 +1155,11 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       settleSections(rec, now, cfg);
 
       // The route decides when the test is over, not a count: two candidates sitting the same
-      // test can finish after different numbers of questions.
-      if (!currentQuestionId(rec.answers, cfg.questions)) rec.finishedAt = now;
+      // test can finish after different numbers of questions. With a review screen the last
+      // answer only gets them there; handing in is a separate act.
+      if (!currentQuestionId(rec.answers, cfg.questions) && phaseOf(rec, now, cfg) !== 'review') {
+        rec.finishedAt = now;
+      }
       await store.put(KEY(token), rec);
       return view(rec, now, cfg);
     }
@@ -1148,20 +1247,17 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       // The attachment is part of the answer and has to travel with it. Leaving it out meant a
       // candidate who submitted a PDF and no text was shown "(left blank)" against their own
       // work, which is alarming in exactly the situation where being alarmed is most costly.
-      return view(rec, now, cfg, {
-        review: rec.answers.map((a) => ({
-          number: a.index + 1,
-          prompt: a.prompt,
-          value: a.value,
-          format: a.format || 'text',
-          msSpent: a.msSpent,
-          upload: a.upload || null,
-          uploads: Array.isArray(a.uploads) ? a.uploads : a.upload ? [a.upload] : [],
-          choice: a.choice || null,
-          links: Array.isArray(a.links) ? a.links : [],
-          skipped: !!a.skipped,
-        })),
-      });
+      return view(rec, now, cfg, { review: submitted(rec) });
+    }
+
+    case 'submit': {
+      // The review screen's button. It sends no answer and changes nothing that was submitted;
+      // all it does is close the sitting. Anywhere other than the review screen it is a no-op
+      // rather than an error, so a double click or a stale tab just re-renders where they are.
+      if (phaseOf(rec, now, cfg) !== 'review') return view(rec, now, cfg);
+      rec.finishedAt = now;
+      await store.put(KEY(token), rec);
+      return view(rec, now, cfg);
     }
 
     case 'reset': {
