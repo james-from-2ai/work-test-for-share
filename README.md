@@ -213,6 +213,12 @@ on; the hostname candidates use sets neither, so none of it runs there.
 | `ADMIN_KEY` | Secret. Its own key, not the one the candidate deployment uses. |
 | `AIRTABLE_TOKEN` | **leave unset**, and bind a KV namespace as `TESTS` instead |
 
+If `DEPLOYMENT_BANNER` is set and the store still resolves to the candidates' table, both
+endpoints refuse with `internal_copy_points_at_candidates` and say how to fix it, rather than
+writing practice runs in beside real submissions. A labelled copy pointed at that table is
+always a mistake, so it fails at the door instead of at the point somebody reads the results.
+Set `AIRTABLE_WT_TABLE` to a table of your own if you would rather keep using Airtable.
+
 Three things follow from that shape, and they are the point of it:
 
 - **One person finishing never blocks anyone else.** Each sign-in mints its own session keyed to

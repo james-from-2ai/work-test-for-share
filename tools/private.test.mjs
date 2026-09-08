@@ -327,3 +327,46 @@ test('the banner is only added when its variable is set', async () => {
   const without = await ask('https://example.pages.dev/');
   assert.doesNotMatch(await without.text(), /wt-deployment-banner/);
 });
+
+/* -------------------------------- a labelled copy must not touch the real table ---------- */
+
+import { storeFor, CANDIDATE_TABLE } from '../functions/_lib/wt-store.mjs';
+
+test('a labelled internal copy pointed at the candidates table refuses to run', () => {
+  const { store, refuse } = storeFor({ AIRTABLE_TOKEN: 'tok', DEPLOYMENT_BANNER: 'INTERNAL - TEST' });
+  assert.equal(store, null, 'no store, so nothing can be written');
+  assert.equal(refuse.error, 'internal_copy_points_at_candidates');
+  assert.match(refuse.detail, /AIRTABLE_WT_TABLE|KV/, 'it says how to fix it');
+});
+
+test('the same copy is fine once pointed somewhere else, or at KV', () => {
+  const elsewhere = storeFor({
+    AIRTABLE_TOKEN: 'tok', DEPLOYMENT_BANNER: 'INTERNAL - TEST',
+    AIRTABLE_WT_TABLE: 'tbl6PEZ6JQGtolN9N',
+  });
+  assert.ok(elsewhere.store, 'a table of its own is allowed');
+  assert.equal(elsewhere.refuse, undefined);
+
+  const kv = storeFor({ DEPLOYMENT_BANNER: 'INTERNAL - TEST', TESTS: { get: () => null } });
+  assert.equal(kv.backend, 'kv');
+  assert.ok(kv.store);
+  assert.equal(kv.refuse, undefined);
+});
+
+test('the candidate deployment is untouched by the guard', () => {
+  const real = storeFor({ AIRTABLE_TOKEN: 'tok' });
+  assert.equal(real.backend, 'airtable');
+  assert.ok(real.store, 'no banner, so it runs exactly as before');
+  assert.equal(real.refuse, undefined);
+});
+
+test('a password alone does not trip the guard, only the label does', () => {
+  // Gating the real hostname during setup must not break it.
+  const gated = storeFor({ AIRTABLE_TOKEN: 'tok', PREVIEW_PASSWORD: 'x' });
+  assert.ok(gated.store);
+  assert.equal(gated.refuse, undefined);
+});
+
+test('the candidate table id is the one the store defaults to', () => {
+  assert.equal(CANDIDATE_TABLE, 'tblGlPl5hThtcGkTu');
+});

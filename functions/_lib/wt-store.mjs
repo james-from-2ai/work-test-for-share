@@ -42,16 +42,42 @@ const BASE = 'app3qxyas11wjYIhe';
  */
 const TABLE = 'tblGlPl5hThtcGkTu';
 
-/** Returns { store, backend } or throws with a message worth showing an admin. */
+/** The candidates' table, exported so a deployment can be checked against it. */
+export const CANDIDATE_TABLE = TABLE;
+
+/**
+ * Returns { store, backend } and, when the deployment is misconfigured in a way that would
+ * quietly do damage, { refuse } instead of a store.
+ *
+ * The one case worth refusing: a deployment carrying DEPLOYMENT_BANNER is by definition not the
+ * real thing, and the internal copy of this test runs the same branch off the same defaults as
+ * the candidate deployment. Left alone it would write practice runs into the candidates' table,
+ * next to the real submissions, and nobody would notice until someone read the results. A
+ * labelled copy pointed at that table is always a mistake, so it fails at the door.
+ */
 export function storeFor(env) {
   const token = env.AIRTABLE_TOKEN || env.AirtablePAT;
   if (token) {
+    const tableId = env.AIRTABLE_WT_TABLE || TABLE;
+    if (env.DEPLOYMENT_BANNER && tableId === TABLE) {
+      return {
+        backend: 'airtable',
+        store: null,
+        refuse: {
+          error: 'internal_copy_points_at_candidates',
+          detail: 'This deployment is labelled as an internal copy but is pointed at the '
+            + 'candidates\' table. Nothing will run until that is fixed. Either unset '
+            + 'AIRTABLE_TOKEN and bind a KV namespace as TESTS, so practice runs stay out of '
+            + 'Airtable, or set AIRTABLE_WT_TABLE to a table of your own. Then redeploy.',
+        },
+      };
+    }
     return {
       backend: 'airtable',
       store: airtableStore({
         token,
         baseId: env.AIRTABLE_WT_BASE || BASE,
-        tableId: env.AIRTABLE_WT_TABLE || TABLE,
+        tableId,
         fileField: env.AIRTABLE_WT_FILES || 'Files',
       }),
     };

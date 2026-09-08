@@ -38,7 +38,10 @@ import { storeFor } from '../_lib/wt-store.mjs';
 import { json, readJson } from '../_lib/wt-kv.mjs';
 
 export async function onRequestPost({ request, env }) {
-  const { store, backend } = storeFor(env);
+  const { store, backend, refuse } = storeFor(env);
+  // A labelled internal copy pointed at the candidates' table: refuse plainly rather
+  // than write practice runs in beside real submissions. See wt-store.mjs.
+  if (refuse) return json({ ok: false, ...refuse }, 503);
   if (!store) {
     return json({
       ok: false,

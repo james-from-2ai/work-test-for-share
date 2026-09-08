@@ -58,7 +58,10 @@ export async function onRequestPost({ request, env }) {
   }
 
   // Only now, once the caller is authenticated, say anything about storage.
-  const { store } = storeFor(env);
+  const { store, refuse } = storeFor(env);
+  // A labelled internal copy pointed at the candidates' table would let this board read and
+  // delete real submissions. Refuse before it can. See wt-store.mjs.
+  if (refuse) return diagnose(refuse.error, refuse.detail, 503);
   if (!store) {
     return diagnose(
       'server_not_configured',
