@@ -18,13 +18,22 @@ own branch. Keep the three apart:
 | Deployment | Repo and branch | Airtable table | Who can reach it |
 | --- | --- | --- | --- |
 | 2AI PM test, internal | `master-mega-badass-site`, `work-test/` | `Work Test Sessions` | 2AI staff, behind Cloudflare Access |
-| Public demo | this repo, `main` | `Work Test Sessions (Demo)` | anyone; demo data only |
 | **EVP test** | **this repo, the EVP branch** | **`Work Test Sessions (EVP)`** | candidates with a link; admin by key |
+| Internal EVP copy | this repo, the EVP branch | KV, or a table of its own | anyone with the shared password |
+| PM demo | this repo, `main` | `Work Test Sessions (Demo)` | not currently deployed; see below |
 
 `functions/_lib/wt-store.mjs` on the EVP branch defaults to the EVP table (`tblGlPl5hThtcGkTu`).
 That default is the single most important line in the repo: it is what keeps real candidates'
-names, emails, answers and files out of the demo table that anyone holding the demo link can read.
-Do not merge the EVP branch into `main`, and do not point the demo at this table.
+names, emails, answers and files out of any other table. Do not merge the EVP branch into `main`,
+and do not point a second deployment at this table. A deployment that sets `DEPLOYMENT_BANNER` is
+now stopped from doing so in code; see "An internal copy" below.
+
+**The demo hostname serves the internal EVP copy.** The Pages project that used to serve the PM
+demo has its production branch pointed at the EVP branch, so `work-test-for-share.pages.dev` is
+the password-gated internal copy rather than the public demo. Nothing was overwritten to do that:
+`main` still holds the PM demo, and setting that project's production branch back to `main` and
+redeploying restores it. Two projects now build the EVP branch, and the variables on each are
+what make one the candidates' test and the other an internal copy.
 
 ## Deploying the EVP test
 
