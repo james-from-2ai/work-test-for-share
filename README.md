@@ -196,6 +196,40 @@ revision changes a branch, the answers after it are discarded, because they belo
 candidate is no longer on. The server refuses once and says how many, and destroys nothing until
 told to.
 
+## An internal copy, for the team to walk end to end
+
+A third Pages project on this same branch, so the team can sit the real test without touching
+the candidate deployment and without anyone mistaking one for the other. Two variables switch it
+on; the hostname candidates use sets neither, so none of it runs there.
+
+| Cloudflare Pages setting | Value |
+| --- | --- |
+| Repository and production branch | this one, the EVP branch |
+| Build command, output directory | leave both empty, as the candidate project does |
+| `PREVIEW_PASSWORD` | Secret. One shared password. Everyone on the team uses the same one. |
+| `DEPLOYMENT_BANNER` | Text, e.g. `INTERNAL - TEST`. Shown on every page in this deployment. |
+| `OPEN_REGISTRATION` | leave unset, so anyone who is through the password can sign in and start |
+| `ALLOW_SELF_RESET` | `on`, so a walkthrough can be wiped and repeated |
+| `ADMIN_KEY` | Secret. Its own key, not the one the candidate deployment uses. |
+| `AIRTABLE_TOKEN` | **leave unset**, and bind a KV namespace as `TESTS` instead |
+
+Three things follow from that shape, and they are the point of it:
+
+- **One person finishing never blocks anyone else.** Each sign-in mints its own session keyed to
+  the email given, so submitting ends that run and nothing else. With `ALLOW_SELF_RESET=on` the
+  closing screen offers to wipe the session and start over, so the same person can walk it as
+  many times as they like.
+- **Nothing lands in Airtable.** With `AIRTABLE_TOKEN` unset the store falls back to the KV
+  namespace, so internal walkthroughs cannot reach the EVP table or the demo table. Nobody has
+  to remember to tidy up after a rehearsal.
+- **The password is a door, not identity.** It keeps the copy off the open internet. It does not
+  record who walked it, and everyone shares it. For per-person sign-in, put Cloudflare Access in
+  front of the project and leave `PREVIEW_PASSWORD` unset.
+
+`ALLOW_SELF_RESET=on` is the one thing here that must never be set on the candidate deployment:
+it makes the clock restartable by anyone holding the link. The engine defaults it to off, and the
+closing screen labels the box it adds as internal, so a mistake is visible rather than silent.
+
 ## Writing a test without touching code
 
 `builder.html` is the authoring tool. Someone who does not write code can build a whole test in

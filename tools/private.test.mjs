@@ -72,9 +72,12 @@ test('nothing but a string is treated as private', () => {
 
 /* ----------------------------------------------------------------- the middleware ------- */
 
-const ask = (url) => onRequest({
-  request: new Request(url),
-  next: async () => new Response('the real response', { status: 200 }),
+const ask = (url, { env = {}, method = 'GET', headers = {}, body } = {}) => onRequest({
+  request: new Request(url, { method, headers, body }),
+  env,
+  next: async () => new Response('<html><body>the real response</body></html>', {
+    status: 200, headers: { 'content-type': 'text/html; charset=utf-8' },
+  }),
 });
 
 test('the middleware 404s a private path and passes everything else through', async () => {
@@ -84,7 +87,7 @@ test('the middleware 404s a private path and passes everything else through', as
 
   const allowed = await ask('https://example.pages.dev/assets/app.js');
   assert.equal(allowed.status, 200);
-  assert.equal(await allowed.text(), 'the real response');
+  assert.match(await allowed.text(), /the real response/);
 });
 
 test('a query string or a hash does not get around the middleware', async () => {
@@ -162,4 +165,165 @@ test('building twice leaves the same output, so a redeploy is not a surprise', (
   } finally {
     rmSync(out, { recursive: true, force: true });
   }
+});
+
+/* ------------------------------------------------------------------ the gate ------------ */
+
+import { tokenFor, cookieValue, sameSecret, isUnlocked, setCookie, loginPage, bannerHtml } from '../functions/_lib/wt-gate.mjs';
+
+test('the cookie carries an HMAC, never the password', async () => {
+  const token = await tokenFor('correct horse battery staple');
+  assert.match(token, /^[0-9a-f]{64}$/);
+  assert.ok(!token.includes('horse'));
+  assert.equal(token, await tokenFor('correct horse battery staple'), 'stable for one password');
+  assert.notEqual(token, await tokenFor('correct horse battery stapl'), 'changing it logs everyone out');
+});
+
+test('a cookie is read without a regex over the header', () => {
+  assert.equal(cookieValue('a=1; wt_gate=abc; b=2'), 'abc');
+  assert.equal(cookieValue('wt_gate=abc'), 'abc');
+  assert.equal(cookieValue('other=abc'), '');
+  assert.equal(cookieValue(''), '');
+  assert.equal(cookieValue(null), '');
+  assert.equal(cookieValue('wt_gate_other=abc'), '', 'a longer name is not a match');
+});
+
+test('the compare rejects a prefix and a different length', () => {
+  assert.equal(sameSecret('abcdef', 'abcdef'), true);
+  assert.equal(sameSecret('abcdef', 'abcde'), false);
+  assert.equal(sameSecret('abcdef', 'abcdeg'), false);
+  assert.equal(sameSecret('', ''), true);
+  assert.equal(sameSecret(undefined, ''), true);
+});
+
+test('no password set means the gate is not in the way', async () => {
+  assert.equal(await isUnlocked('', ''), true);
+  assert.equal(await isUnlocked(null, undefined), true);
+});
+
+test('a good cookie unlocks and anything else does not', async () => {
+  const pw = 'a shared password';
+  const good = await tokenFor(pw);
+  assert.equal(await isUnlocked(`wt_gate=${good}`, pw), true);
+  assert.equal(await isUnlocked(`wt_gate=${good}x`, pw), false);
+  assert.equal(await isUnlocked('wt_gate=', pw), false);
+  assert.equal(await isUnlocked('', pw), false);
+  assert.equal(await isUnlocked(`wt_gate=${await tokenFor('another password')}`, pw), false);
+});
+
+test('the cookie is HttpOnly, Secure and scoped to the site', () => {
+  const c = setCookie('deadbeef');
+  for (const bit of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/']) assert.match(c, new RegExp(bit));
+  assert.doesNotMatch(c, /Max-Age|Expires/, 'a session cookie, so closing the browser ends it');
+});
+
+test('the sign-in page says nothing about what is behind it', () => {
+  const page = loginPage({ next: '/some/path' });
+  assert.match(page, /Sign in/);
+  assert.match(page, /name="password"/);
+  assert.match(page, /action="\/__unlock\?next=%2Fsome%2Fpath"/);
+  assert.doesNotMatch(page, /Evidence Action|MMS|candidate/i, 'no hint at whose assessment this is');
+  assert.match(page, /noindex/);
+});
+
+test('the sign-in page escapes what it is handed', () => {
+  const page = loginPage({ next: '/x', error: '<script>alert(1)</script>', label: '"><b>' });
+  assert.doesNotMatch(page, /<script>alert/);
+  assert.match(page, /&lt;script&gt;/);
+  assert.doesNotMatch(page, /"><b>/);
+});
+
+test('the banner shows its text and pushes the page down', () => {
+  const b = bannerHtml('INTERNAL - TEST');
+  assert.match(b, /INTERNAL - TEST/);
+  assert.match(b, /position: fixed/);
+  assert.match(b, /padding-top/, 'the page is pushed clear of it');
+  const nasty = bannerHtml('<img src=x onerror=alert(1)>');
+  assert.doesNotMatch(nasty, /<img/);
+});
+
+/* ------------------------------------------------- the gate, through the middleware ----- */
+
+const PW = 'a shared password';
+const unlockedCookie = async () => ({ cookie: `wt_gate=${await tokenFor(PW)}` });
+
+test('with no password set, nothing is gated', async () => {
+  const res = await ask('https://example.pages.dev/');
+  assert.equal(res.status, 200);
+});
+
+test('a locked deployment shows the sign-in page for a page request', async () => {
+  const res = await ask('https://example.pages.dev/', { env: { PREVIEW_PASSWORD: PW } });
+  assert.equal(res.status, 200);
+  const body = await res.text();
+  assert.match(body, /name="password"/);
+  assert.doesNotMatch(body, /the real response/, 'the page behind it is never rendered');
+});
+
+test('a locked deployment gives the API a status, not a login form', async () => {
+  const res = await ask('https://example.pages.dev/api/work-test', {
+    env: { PREVIEW_PASSWORD: PW }, method: 'POST', body: '{}',
+  });
+  assert.equal(res.status, 401);
+  assert.equal((await res.json()).error, 'locked');
+});
+
+test('the right password sets a cookie and sends you where you were going', async () => {
+  const res = await ask('https://example.pages.dev/__unlock?next=%2Fadmin.html', {
+    env: { PREVIEW_PASSWORD: PW },
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: `password=${encodeURIComponent(PW)}`,
+  });
+  assert.equal(res.status, 303);
+  assert.equal(res.headers.get('location'), '/admin.html');
+  assert.match(res.headers.get('set-cookie'), /wt_gate=[0-9a-f]{64}/);
+});
+
+test('the wrong password is refused and says so', async () => {
+  const res = await ask('https://example.pages.dev/__unlock?next=%2F', {
+    env: { PREVIEW_PASSWORD: PW },
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: 'password=nope',
+  });
+  assert.equal(res.status, 401);
+  assert.match(await res.text(), /did not match/);
+  assert.equal(res.headers.get('set-cookie'), null, 'nothing is set on a failure');
+});
+
+test('next= cannot be pointed off this deployment', async () => {
+  for (const [raw, expected] of [
+    ['https%3A%2F%2Felsewhere.example%2Fx', '/'],
+    ['%2F%2Felsewhere.example', '/'],
+    ['%2Fadmin.html', '/admin.html'],
+  ]) {
+    const res = await ask(`https://example.pages.dev/__unlock?next=${raw}`, {
+      env: { PREVIEW_PASSWORD: PW },
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `password=${encodeURIComponent(PW)}`,
+    });
+    assert.equal(res.headers.get('location'), expected, raw);
+  }
+});
+
+test('a good cookie gets through to the page', async () => {
+  const res = await ask('https://example.pages.dev/', {
+    env: { PREVIEW_PASSWORD: PW }, headers: await unlockedCookie(),
+  });
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /the real response/);
+});
+
+test('the private denylist still applies to someone who is signed in', async () => {
+  const res = await ask('https://example.pages.dev/tools/evp-spec.json', {
+    env: { PREVIEW_PASSWORD: PW }, headers: await unlockedCookie(),
+  });
+  assert.equal(res.status, 404);
+});
+
+test('the banner is only added when its variable is set', async () => {
+  const without = await ask('https://example.pages.dev/');
+  assert.doesNotMatch(await without.text(), /wt-deployment-banner/);
 });
