@@ -7,7 +7,8 @@ write-up (typed or as a PDF). The option routes them to one of three Stage 2 pat
 question on AI use with their transcripts attached. Stage 2 is not visible until Stage 1 is submitted, and Stage 1 cannot be
 changed afterwards.
 
-The test is at `/`, the results board at `/admin.html`, and the authoring tool at `/builder.html`.
+The test is at `/` and the results board at `/admin.html`. The authoring tool is its own
+deployment and is not served from this hostname: see "Writing a test without touching code".
 
 ## Three tests, three deployments, three tables
 
@@ -55,6 +56,19 @@ You need a **new Cloudflare Pages project**, separate from the demo and from the
 6. **Custom domain** (optional): Pages project > Custom domains > Set up a custom domain, for
    example `evp-work-test.evidenceaction.org`. The zone has to be on Cloudflare DNS; Pages adds
    the CNAME for you. Until then the `.pages.dev` address works and carries the same headers.
+7. **Check the repo's internal files are not being served.** Pages serves the deployment root
+   and this project has no build step, so without `functions/_middleware.js` the spec file is a
+   fetch away from anyone holding a candidate link, all three Stage 2 paths included. After a
+   deploy, confirm the four that matter:
+
+   ```
+   for p in tools/evp-spec.json README.md builder.html assets/app.js; do
+     curl -s -o /dev/null -w "$p %{http_code}\n" "https://<your-project>.pages.dev/$p"
+   done
+   ```
+
+   The first three must be 404 and `assets/app.js` must be 200. If a spec answers 200, the test
+   is readable in advance and the middleware is missing or was bypassed.
 
 Then open `/admin.html`, paste the admin key, and issue a link per candidate.
 
@@ -143,7 +157,7 @@ node --test tools/*.test.mjs                           # 170+ tests
 git diff                                               # read what changed, then commit and deploy
 ```
 
-Or open `/builder.html` (locally or on the deployed site), load `tools/evp-spec.json` from the
+Or open the builder, at its own hostname or locally at `/builder.html`, load a spec from the
 Load example menu, edit, download the spec, and run `spec-apply` on it. The builder cannot
 publish, on purpose: shipping is a reviewed commit.
 
@@ -184,9 +198,47 @@ told to.
 
 ## Writing a test without touching code
 
-`/builder.html` is the authoring tool. Someone who does not write code can build a whole test in
+`builder.html` is the authoring tool. Someone who does not write code can build a whole test in
 it: the questions, the options and where each one branches to, the parts and their recommended
-minutes, and the reference briefs. Four panels sit alongside the editor:
+minutes, and the reference briefs.
+
+### Where it is deployed
+
+It has its own Cloudflare Pages project, and it is deliberately not served from a hostname a
+candidate visits. It used to be, because Pages serves the deployment root and the builder is a
+static file in it, which put an unauthenticated authoring tool on the assessment origin and put
+the spec file there with it. `functions/_middleware.js` now refuses `/builder.html`, `/tools/*`
+and `/README.md` on the candidate deployments, and `tools/build-builder.mjs` assembles the
+builder's own:
+
+| Cloudflare Pages setting | Value |
+| --- | --- |
+| Repository | this one |
+| Production branch | `evp`, the same branch the test deploys from |
+| Build command | `node tools/build-builder.mjs` |
+| Build output directory | `builder-dist` |
+| Cloudflare Access | none |
+
+Two projects on one branch, with different build settings, so there is no second copy of the
+builder to keep in step. The output holds `index.html` (the tool, so the bare hostname opens
+it), `builder.html` (the same file under its old name, so a bookmark still works),
+`assets/wt-flow.mjs`, the generic example spec and a `_headers` that sets `noindex`. It holds no
+`functions/`, so nothing on that origin can reach a candidate's answers, and it does not ship
+`tools/evp-spec.json`, because a live assessment has no business on an origin anyone with the
+link can read.
+
+**Unlisted, not gated.** Anyone with the link can author a draft. That is the intended posture:
+authoring publishes nothing, and a draft becomes a live test only when someone runs `spec-apply`
+and deploys. `noindex` keeps the link the only way in. If that changes, put a Cloudflare Access
+policy in front of the project; nothing in the tool depends on being open.
+
+On the hosted copy the console shows two 404s, for `tools/evp-spec.json` and `/api/dev-spec`.
+Both are expected: the Load example button tries the EVP spec first and falls through to the
+generic one, and live preview probes for a dev server that a hosted copy does not have.
+
+### The panels
+
+Four panels sit alongside the editor:
 
 - **Branch map**, drawing every route, labelled with the option that takes it. A branch pointing
   at a question that does not exist is drawn in red.
@@ -297,7 +349,10 @@ node --test tools/*.test.mjs
 The suites by name: `engine` covers the guarantees that hold whatever the settings are, driven
 against the PM test kept as a fixture in `tools/fixtures/pm-test.mjs`; `flow` covers branching;
 `options` covers everything that is a setting; `files` covers uploads; `airtable` covers the
-store; and `tooling` compiles what the builder produces and exercises the dev server.
+store; `tooling` compiles what the builder produces and exercises the dev server; and `private`
+covers the two things that keep the authoring tool and the spec off a candidate's hostname, the
+middleware denylist and the builder's own build. Both of those fail silently if they regress,
+which is why they are tested rather than eyeballed.
 
 ## Keeping the engine in step with the internal copy
 
