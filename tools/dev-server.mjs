@@ -30,7 +30,7 @@ import { readFile, writeFile, rm } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { handle, config, createCandidates, listCandidates, deleteCandidate, toCsv } from '../functions/_lib/wt-engine.mjs';
+import { handle, config, createCandidates, listCandidates, deleteCandidate, toCsv, liveShape } from '../functions/_lib/wt-engine.mjs';
 import { validateFlow } from '../functions/_lib/wt-flow.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -199,7 +199,7 @@ createServer(async (req, res) => {
       const made = await createCandidates(store, Array.isArray(body.people) ? body.people : []);
       return json(res, { ok: true, created: made.map((m) => ({ ...m, link: `${base}?t=${m.token}` })) });
     }
-    if (body.action === 'list') return json(res, { ok: true, rows: await listCandidates(store, Date.now(), CFG), base });
+    if (body.action === 'list') return json(res, { ok: true, rows: await listCandidates(store, Date.now(), CFG), base, shape: liveShape(CFG) });
     if (body.action === 'csv') return send(res, 200, '\uFEFF' + toCsv(await listCandidates(store, Date.now(), CFG)), 'text/csv; charset=utf-8');
     if (body.action === 'delete') {
       await deleteCandidate(store, String(body.token || ''));

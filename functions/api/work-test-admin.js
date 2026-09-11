@@ -11,12 +11,12 @@
  *   There is no Cloudflare Access in front of this hostname, so this endpoint is reachable from
  *   anywhere and the key is the whole of the defence.
  *
- * That is acceptable only because what sits behind it is demo data, and three separate things
- * depend on it staying that way: wt-store.mjs points at the demo Airtable table, admin.html
- * accepts the key from a `?k=` query string and so leaks it into browser history, and README.md
- * tells deployers to pick a short throwaway key. None of the three is safe with real candidates'
- * answers behind it. If you need that, use the copy in master-mega-badass-site, which is gated
- * by Cloudflare Access.
+ * What sits behind it is real: candidates' names, emails, answers and files for the Evidence
+ * Action EVP hire. So the key has to be long and random, it must never appear in a URL (the
+ * public demo's `?k=` prefill is removed from admin.html for that reason), and README.md tells
+ * deployers to put a Cloudflare Access policy in front of /admin.html and /api/work-test-admin
+ * as a second layer. Access on those two paths leaves the candidate-facing test open, which is
+ * what external candidates need.
  *
  * Cloudflare environment variables (Pages project > Settings > Variables and secrets):
  *   ADMIN_KEY - REQUIRED, type Secret. Any long random string. Whoever holds it can read every
@@ -24,16 +24,16 @@
  *   TEST_PATH - optional, defaults to / in this copy. Only used to build candidate links.
  */
 
-import { createCandidates, listCandidates, deleteCandidate, toCsv, config } from '../_lib/wt-engine.mjs';
+import { createCandidates, listCandidates, deleteCandidate, toCsv, config, liveShape } from '../_lib/wt-engine.mjs';
 import { storeFor } from '../_lib/wt-store.mjs';
 import { json, readJson, secretEquals } from '../_lib/wt-kv.mjs';
 
 const TEST_PATH = '/';
 
 export async function onRequestPost({ request, env }) {
-  // Authenticate BEFORE reporting anything about configuration. This copy of the code also runs
-  // on a public demo with no Access gate in front of it, where an anonymous visitor should learn
-  // nothing beyond "wrong key", not which variables the deployment is missing.
+  // Authenticate BEFORE reporting anything about configuration. This hostname is reachable by
+  // anyone, and an anonymous visitor should learn nothing beyond "wrong key", not which
+  // variables the deployment is missing.
   const supplied = request.headers.get('x-admin-key') || '';
 
   /**
@@ -58,7 +58,10 @@ export async function onRequestPost({ request, env }) {
   }
 
   // Only now, once the caller is authenticated, say anything about storage.
-  const { store } = storeFor(env);
+  const { store, refuse } = storeFor(env);
+  // A labelled internal copy pointed at the candidates' table would let this board read and
+  // delete real submissions. Refuse before it can. See wt-store.mjs.
+  if (refuse) return diagnose(refuse.error, refuse.detail, 503);
   if (!store) {
     return diagnose(
       'server_not_configured',
@@ -80,7 +83,8 @@ export async function onRequestPost({ request, env }) {
       }
 
       case 'list':
-        return json({ ok: true, rows: await listCandidates(store, Date.now(), cfg), base });
+        // `shape` is what this deployment is serving, read back from the engine. See liveShape.
+        return json({ ok: true, rows: await listCandidates(store, Date.now(), cfg), base, shape: liveShape(cfg) });
 
       case 'csv': {
         // Leading BOM so Excel reads it as UTF-8 rather than the system codepage, which

@@ -25,11 +25,12 @@
  * Variables are per-environment and Pages does not apply changes to deployments that already
  * exist, so redeploy after setting them.
  *
- * This copy is the PUBLIC demo. There is no Cloudflare Access in front of it, so anyone holding
- * the URL can register and sit the test. That is the point of this repo, and it is why
- * wt-store.mjs defaults to the demo Airtable table rather than the real one. Do not carry any
- * assumption about that gate over from the internal copy in master-mega-badass-site: here, this
- * endpoint is on the open internet. See README.md.
+ * This deployment serves external candidates, so there is no Cloudflare Access in front of the
+ * test itself: anyone holding a candidate link can sit it. Set OPEN_REGISTRATION=off so that only
+ * links issued from /admin.html work, rather than anyone who finds the hostname. The admin side
+ * is a different matter; see work-test-admin.js. Do not carry any assumption about an Access gate
+ * over from the internal copy in master-mega-badass-site: here, this endpoint is on the open
+ * internet. See README.md.
  */
 
 import { handle, config, readiness } from '../_lib/wt-engine.mjs';
@@ -37,7 +38,10 @@ import { storeFor } from '../_lib/wt-store.mjs';
 import { json, readJson } from '../_lib/wt-kv.mjs';
 
 export async function onRequestPost({ request, env }) {
-  const { store, backend } = storeFor(env);
+  const { store, backend, refuse } = storeFor(env);
+  // A labelled internal copy pointed at the candidates' table: refuse plainly rather
+  // than write practice runs in beside real submissions. See wt-store.mjs.
+  if (refuse) return json({ ok: false, ...refuse }, 503);
   if (!store) {
     return json({
       ok: false,

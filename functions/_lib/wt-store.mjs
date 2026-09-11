@@ -28,30 +28,56 @@ import { kvStore } from './wt-kv.mjs';
 const BASE = 'app3qxyas11wjYIhe';
 
 /**
- * The DEMO table, not the real one. This matters more than any other line in this repo.
+ * The EVP table: `Work Test Sessions (EVP)`. This matters more than any other line in this repo.
  *
- * This copy of the work test is built to be deployed WITHOUT a password, so anyone with the URL
- * can take it and read the results board. Pointing it at the real `Work Test Sessions` table
- * would put actual candidates' names, emails, and answers on the open internet. The separation
- * between the two tables is the only thing preventing that, so it is the default here rather
- * than something a deployer has to remember to set.
+ * This deployment serves the Evidence Action EVP, Evidence take-home exercise to real candidates,
+ * so this table holds real names, emails, answers and uploaded files. It is deliberately NOT the
+ * public demo's table (`Work Test Sessions (Demo)`, tbl6PEZ6JQGtolN9N), which anyone holding the
+ * demo link can read back through the demo admin page, and it is not the 2AI PM test's table
+ * either. Three tests, three tables, and the default lives here rather than in a variable so a
+ * deployer cannot forget to set it and quietly write candidates into the wrong one.
  *
- * Do not "fix" this to match the internal copy. If you need this instance to read real
- * submissions, you need Cloudflare Access in front of it instead, at which point use the copy
- * that lives in the master-mega-badass-site repo.
+ * The table needs an Attachment column named `Files` (or set AIRTABLE_WT_FILES), because this
+ * test accepts PDF and Word uploads.
  */
-const TABLE = 'tbl6PEZ6JQGtolN9N';
+const TABLE = 'tblGlPl5hThtcGkTu';
 
-/** Returns { store, backend } or throws with a message worth showing an admin. */
+/** The candidates' table, exported so a deployment can be checked against it. */
+export const CANDIDATE_TABLE = TABLE;
+
+/**
+ * Returns { store, backend } and, when the deployment is misconfigured in a way that would
+ * quietly do damage, { refuse } instead of a store.
+ *
+ * The one case worth refusing: a deployment carrying DEPLOYMENT_BANNER is by definition not the
+ * real thing, and the internal copy of this test runs the same branch off the same defaults as
+ * the candidate deployment. Left alone it would write practice runs into the candidates' table,
+ * next to the real submissions, and nobody would notice until someone read the results. A
+ * labelled copy pointed at that table is always a mistake, so it fails at the door.
+ */
 export function storeFor(env) {
   const token = env.AIRTABLE_TOKEN || env.AirtablePAT;
   if (token) {
+    const tableId = env.AIRTABLE_WT_TABLE || TABLE;
+    if (env.DEPLOYMENT_BANNER && tableId === TABLE) {
+      return {
+        backend: 'airtable',
+        store: null,
+        refuse: {
+          error: 'internal_copy_points_at_candidates',
+          detail: 'This deployment is labelled as an internal copy but is pointed at the '
+            + 'candidates\' table. Nothing will run until that is fixed. Either unset '
+            + 'AIRTABLE_TOKEN and bind a KV namespace as TESTS, so practice runs stay out of '
+            + 'Airtable, or set AIRTABLE_WT_TABLE to a table of your own. Then redeploy.',
+        },
+      };
+    }
     return {
       backend: 'airtable',
       store: airtableStore({
         token,
         baseId: env.AIRTABLE_WT_BASE || BASE,
-        tableId: env.AIRTABLE_WT_TABLE || TABLE,
+        tableId,
         fileField: env.AIRTABLE_WT_FILES || 'Files',
       }),
     };

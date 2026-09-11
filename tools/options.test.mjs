@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { handle, createCandidates, config, requireOf, attachmentOf } from '../functions/_lib/wt-engine.mjs';
+import { handle, createCandidates, config, requireOf, attachmentOf, introFor, liveShape } from '../functions/_lib/wt-engine.mjs';
 
 function memStore() {
   const db = new Map();
@@ -282,6 +282,64 @@ test('a question can take a file alongside text without insisting on one', async
  */
 const leads = (res) => res.intro.rules.map((r) => r.lead);
 
+/* ------------------------------------------------------------ at a glance ----------- */
+
+test('an untimed test carries the author\'s suggested time on the timing rule and the glance tile', () => {
+  const intro = introFor(make({ timing: { mode: 'none' }, intro: { estimate: 'We suggest about 4 hours.' } }));
+  assert.equal(intro.rules[0].lead, 'There is no time limit.');
+  assert.match(intro.rules[0].text, /We suggest about 4 hours\./);
+  assert.equal(intro.glance[0].label, 'Time');
+  assert.match(intro.glance[0].text, /^Not timed\. We suggest about 4 hours\./);
+});
+
+test('a timed test ignores the estimate: the clock is the estimate', () => {
+  const intro = introFor(make({ durationSec: 3600, intro: { estimate: 'We suggest about 4 hours.' } }));
+  assert.ok(!intro.rules.some((r) => /suggest about 4 hours/.test(r.text)));
+  assert.match(intro.glance[0].text, /^60 minutes on one clock/);
+});
+
+test('structure is the author\'s when given, and written from the parts when not', () => {
+  const own = introFor(make({ intro: { structure: 'Two stages, then a closing question.' } }));
+  assert.equal(own.glance[1].label, 'Structure');
+  assert.equal(own.glance[1].text, 'Two stages, then a closing question.');
+  const generated = introFor(make({}));
+  assert.match(generated.glance[1].text, /^2 parts, one question at a time\. Answers are final once submitted\./);
+  const revisable = introFor(make({ navigation: { back: true, edit: true } }));
+  assert.match(revisable.glance[1].text, /You can go back and change answers\./);
+});
+
+test('the last question of a part names the part it leads into, and nothing else does', async () => {
+  const store = memStore();
+  const cfg = make({
+    questions: [
+      { id: 'pick', section: 'p1', type: 'choice', prompt: 'Pick', options: [{ label: 'A', next: 'a' }, { label: 'B', next: 'b' }] },
+      { id: 'a', section: 'p1', type: 'short', prompt: 'A', next: 'end' },
+      { id: 'b', section: 'p1', type: 'short', prompt: 'B', next: 'end' },
+      { id: 'end', section: 'p2', type: 'short', prompt: 'End', next: null },
+    ],
+  });
+  const token = await started(store, cfg);
+  const first = await handle(store, { action: 'state', token }, T0 + 1000, cfg);
+  assert.equal(first.question.nextPart, null, 'both options stay in Part 1, so no part is named');
+  const second = await handle(store, { action: 'answer', token, index: 0, questionId: 'pick', value: 1 }, T0 + 2000, cfg);
+  assert.equal(second.question.id, 'b');
+  assert.equal(second.question.nextPart, 'Part 2', 'the write-up closes Part 1 and leads into Part 2');
+  const last = await handle(store, { action: 'answer', token, index: 1, questionId: 'b', value: 'x' }, T0 + 3000, cfg);
+  assert.equal(last.question.nextPart, null, 'the final question leads nowhere');
+  assert.equal(last.question.isLast, true);
+});
+
+test('format says what the questions actually accept', () => {
+  const typed = introFor(make({}));
+  assert.equal(typed.glance[2].label, 'Format');
+  assert.equal(typed.glance[2].text, 'Typed answers.');
+  const withPdf = introFor(make({
+    questions: [{ id: 'a', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], prompt: 'A', next: null }],
+  }));
+  assert.match(withPdf.glance[2].text, /^Type or paste your answer, or attach a PDF up to 4\.5 MB\.$/);
+  assert.ok(!/Word/.test(withPdf.glance[2].text), 'a PDF-only question must not promise Word');
+});
+
 test('the instructions describe a single clock when there is one', async () => {
   const store = memStore();
   const cfg = make({ durationSec: 3600 });
@@ -347,7 +405,8 @@ test('files are only mentioned when a question actually takes one', async () => 
   const plain = make();
   const [a] = await createCandidates(noFiles, [{ name: 'A', email: 'a@example.com' }]);
   const without = await handle(noFiles, { action: 'state', token: a.token }, T0, plain);
-  assert.equal(leads(without).includes('Some answers take a file.'), false);
+  assert.equal(leads(without).includes('How to submit your answers.'), false);
+  assert.equal(leads(without).includes('You can format your answers.'), false, 'plain text questions need no formatting rule');
 
   const withFiles = memStore();
   const cfg = config({
@@ -356,9 +415,24 @@ test('files are only mentioned when a question actually takes one', async () => 
   });
   const [b] = await createCandidates(withFiles, [{ name: 'B', email: 'b@example.com' }]);
   const res = await handle(withFiles, { action: 'state', token: b.token }, T0, cfg);
-  const rule = res.intro.rules.find((r) => r.lead === 'Some answers take a file.');
+  const rule = res.intro.rules.find((r) => r.lead === 'How to submit your answers.');
   assert.match(rule.text, /PDF/);
   assert.match(rule.text, /enough on its own/, 'did not explain what "either" means');
+  assert.match(rule.text, /headings, subheadings, bold/, 'formatting is folded into the same rule');
+  assert.equal(leads(res).includes('You can format your answers.'), false, 'formatting must not be a second rule');
+});
+
+test('the author\'s submit note rides on the submit rule', async () => {
+  const store = memStore();
+  const cfg = config({
+    sections: SECTIONS,
+    questions: [{ id: 'a', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], prompt: 'A', next: null }],
+    intro: { submitNote: 'Draft in Word first.' },
+  });
+  const [c] = await createCandidates(store, [{ name: 'A', email: 'a@example.com' }]);
+  const res = await handle(store, { action: 'state', token: c.token }, T0, cfg);
+  const rule = res.intro.rules.find((r) => r.lead === 'How to submit your answers.');
+  assert.match(rule.text, /Draft in Word first\.$/);
 });
 
 test('the author’s own rules and prose come through, after the generated ones', async () => {
@@ -649,4 +723,309 @@ test('blocking paste for the whole test reaches every question', async () => {
   // the page read that one instead, so a per-question override was silently ignored.
   assert.equal(res.question.blockPaste, true);
   assert.equal('blockPaste' in res, false, 'a test-wide flag is sent that the page could mistake for the question’s');
+});
+
+/* ------------------------------------------------------------ decision --------------- */
+
+const DECIDE = [
+  {
+    id: 'd', section: 'p1', type: 'decision', require: 'either', accept: ['pdf'], prompt: 'Decide and write it up',
+    options: [{ label: 'Hold', next: 'hold' }, { label: 'Grow', next: 'grow' }],
+  },
+  { id: 'hold', section: 'p2', type: 'short', prompt: 'Why hold?', next: null },
+  { id: 'grow', section: 'p2', type: 'short', prompt: 'Why grow?', next: null },
+];
+
+test('a decision question needs an option, then routes on it and keeps the write-up', async () => {
+  const store = memStore();
+  const cfg = config({ sections: SECTIONS, questions: DECIDE, timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const shown = await handle(store, { action: 'state', token }, T0 + 500, cfg);
+  assert.equal(shown.question.type, 'decision');
+  assert.deepEqual(shown.question.options, ['Hold', 'Grow'], 'labels only, never destinations');
+  assert.equal(shown.question.nextPart, 'Part 2');
+
+  const noPick = await handle(store, { action: 'answer', token, index: 0, questionId: 'd', value: { text: rich('words') } }, T0 + 1000, cfg);
+  assert.equal(noPick.rejected, 'no_choice');
+  const noText = await handle(store, { action: 'answer', token, index: 0, questionId: 'd', value: { option: 1, text: [] } }, T0 + 1000, cfg);
+  assert.equal(noText.rejected, 'need_one', 'an option alone is not an answer on an either question');
+
+  const ok = await handle(store, { action: 'answer', token, index: 0, questionId: 'd', value: { option: 1, text: rich('because growth') } }, T0 + 2000, cfg);
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(ok.question.id, 'grow', 'the option decided the route');
+
+  const review = await handle(store, { action: 'review', token }, T0 + 3000, cfg);
+  assert.equal(review.review[0].choice, 'Grow');
+  assert.equal(review.review[0].value[0].runs[0].t, 'because growth');
+});
+
+test('a decision question accepts a file instead of text, like any either question', async () => {
+  const store = memStore();
+  const cfg = config({ sections: SECTIONS, questions: DECIDE, timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const up = await handle(store, { action: 'upload', token, questionId: 'd', filename: 'memo.pdf', contentType: 'application/pdf', data: PDF }, T0 + 500, cfg);
+  assert.equal(up.ok, true, JSON.stringify(up));
+  const ok = await handle(store, { action: 'answer', token, index: 0, questionId: 'd', value: { option: 0, text: [] } }, T0 + 1000, cfg);
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(ok.question.id, 'hold');
+  const review = await handle(store, { action: 'review', token }, T0 + 2000, cfg);
+  assert.equal(review.review[0].uploads.length, 1);
+  assert.equal(review.review[0].choice, 'Hold');
+});
+
+test('a bogus option index is refused rather than routed anywhere', async () => {
+  const store = memStore();
+  const cfg = config({ sections: SECTIONS, questions: DECIDE, timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const res = await handle(store, { action: 'answer', token, index: 0, questionId: 'd', value: { option: 7, text: rich('x') } }, T0 + 1000, cfg);
+  assert.equal(res.rejected, 'no_choice');
+});
+
+/* ------------------------------------------------------------ several files ---------- */
+
+test('a question with maxFiles collects files up to the cap and hands them all to the answer', async () => {
+  const store = memStore();
+  const cfg = config({
+    sections: SECTIONS,
+    questions: [{ id: 't', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], maxFiles: 2, prompt: 'Transcripts', next: null }],
+    timing: { mode: 'none' },
+  });
+  const token = await started(store, cfg);
+  const one = await handle(store, { action: 'upload', token, questionId: 't', filename: 'a.pdf', contentType: 'application/pdf', data: PDF }, T0 + 500, cfg);
+  assert.equal(one.uploads.length, 1);
+  assert.equal(one.uploaded.filename, 'a.pdf');
+  const two = await handle(store, { action: 'upload', token, questionId: 't', filename: 'b.pdf', contentType: 'application/pdf', data: PDF }, T0 + 600, cfg);
+  assert.deepEqual(two.uploads.map((f) => f.filename), ['a.pdf', 'b.pdf'], 'the second file was added, not swapped in');
+  const three = await handle(store, { action: 'upload', token, questionId: 't', filename: 'c.pdf', contentType: 'application/pdf', data: PDF }, T0 + 700, cfg);
+  assert.equal(three.ok, false);
+  assert.equal(three.error, 'too_many_files');
+  assert.equal(store.files.length, 2, 'the refused file must not reach the store');
+
+  const back = await handle(store, { action: 'state', token }, T0 + 800, cfg);
+  assert.equal(back.uploads.length, 2, 'a refresh shows every file already attached');
+
+  const ok = await handle(store, { action: 'answer', token, index: 0, questionId: 't', value: [] }, T0 + 1000, cfg);
+  assert.equal(ok.phase, 'done');
+  const review = await handle(store, { action: 'review', token }, T0 + 2000, cfg);
+  assert.deepEqual(review.review[0].uploads.map((f) => f.filename), ['a.pdf', 'b.pdf']);
+  assert.equal(review.review[0].upload.filename, 'a.pdf', 'the single-file field still points at the first for older readers');
+});
+
+test('a single-file question still replaces rather than accumulates', async () => {
+  const store = memStore();
+  const cfg = config({
+    sections: SECTIONS,
+    questions: [{ id: 'f', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], prompt: 'One file', next: null }],
+    timing: { mode: 'none' },
+  });
+  const token = await started(store, cfg);
+  await handle(store, { action: 'upload', token, questionId: 'f', filename: 'a.pdf', contentType: 'application/pdf', data: PDF }, T0 + 500, cfg);
+  const two = await handle(store, { action: 'upload', token, questionId: 'f', filename: 'b.pdf', contentType: 'application/pdf', data: PDF }, T0 + 600, cfg);
+  assert.deepEqual(two.uploads.map((f) => f.filename), ['b.pdf']);
+  assert.equal(two.upload.filename, 'b.pdf');
+});
+
+/* ------------------------------------------------------------ links ------------------ */
+
+const LINKED = [{
+  id: 'ai', section: 'p1', type: 'rich', require: 'text', attachment: 'optional', accept: ['pdf'], maxFiles: 3, prompt: 'AI use',
+  links: { prompt: 'Share links', help: 'One per line.', max: 2, docs: [{ label: 'How', url: 'https://example.com/how' }, { label: 'bad', url: 'javascript:alert(1)' }] },
+  next: null,
+}];
+
+test('a question can ask for links: exposed with its docs, stored with the answer, shown in review', async () => {
+  const store = memStore();
+  const cfg = config({ sections: SECTIONS, questions: LINKED, timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const shown = await handle(store, { action: 'state', token }, T0 + 500, cfg);
+  assert.equal(shown.question.links.prompt, 'Share links');
+  assert.equal(shown.question.links.max, 2);
+  assert.deepEqual(shown.question.links.docs.map((d) => d.url), ['https://example.com/how'], 'a non-http doc link must never reach the page');
+
+  const bad = await handle(store, { action: 'answer', token, index: 0, questionId: 'ai', value: rich('used it'), links: ['https://chatgpt.com/share/abc', 'not a link'] }, T0 + 1000, cfg);
+  assert.equal(bad.rejected, 'bad_link');
+  assert.equal(bad.badLink, 'not a link');
+
+  const ok = await handle(store, { action: 'answer', token, index: 0, questionId: 'ai', value: rich('used it'), links: 'https://chatgpt.com/share/abc\n\nhttps://claude.ai/share/def\nhttps://claude.ai/share/def\nhttps://third.example/x' }, T0 + 2000, cfg);
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  const review = await handle(store, { action: 'review', token }, T0 + 3000, cfg);
+  assert.deepEqual(review.review[0].links, ['https://chatgpt.com/share/abc', 'https://claude.ai/share/def'], 'deduped and capped at max');
+});
+
+test('links are optional and never stand in for a required answer', async () => {
+  const store = memStore();
+  const cfg = config({ sections: SECTIONS, questions: LINKED, timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const empty = await handle(store, { action: 'answer', token, index: 0, questionId: 'ai', value: [], links: ['https://claude.ai/share/x'] }, T0 + 1000, cfg);
+  assert.equal(empty.rejected, 'empty');
+  const none = await handle(store, { action: 'answer', token, index: 0, questionId: 'ai', value: rich('No AI used') }, T0 + 2000, cfg);
+  assert.equal(none.ok, true);
+  const review = await handle(store, { action: 'review', token }, T0 + 3000, cfg);
+  assert.deepEqual(review.review[0].links, []);
+});
+
+/* ------------------------------------------------------------ confirmation ----------- */
+
+test('a question with a confirmation statement refuses to lock in until it is confirmed', async () => {
+  const store = memStore();
+  const cfg = config({
+    sections: SECTIONS,
+    questions: [{ id: 'w', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], prompt: 'Write-up', confirm: 'I answered all four questions.', next: null }],
+    timing: { mode: 'none' },
+  });
+  const token = await started(store, cfg);
+  const shown = await handle(store, { action: 'state', token }, T0 + 500, cfg);
+  assert.equal(shown.question.confirm, 'I answered all four questions.');
+
+  const blank = await handle(store, { action: 'answer', token, index: 0, questionId: 'w', value: [], confirmed: true }, T0 + 900, cfg);
+  assert.equal(blank.rejected, 'need_one', 'content is checked before the confirmation');
+  const unconfirmed = await handle(store, { action: 'answer', token, index: 0, questionId: 'w', value: rich('done') }, T0 + 1000, cfg);
+  assert.equal(unconfirmed.rejected, 'not_confirmed');
+  const stringy = await handle(store, { action: 'answer', token, index: 0, questionId: 'w', value: rich('done'), confirmed: 'true' }, T0 + 1100, cfg);
+  assert.equal(stringy.rejected, 'not_confirmed', 'only a real boolean true counts');
+  const ok = await handle(store, { action: 'answer', token, index: 0, questionId: 'w', value: rich('done'), confirmed: true }, T0 + 2000, cfg);
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(ok.phase, 'done');
+  const raw = await store.get(`c:${token}`);
+  assert.equal(raw.answers[0].confirmed, true, 'the confirmation is recorded with the answer');
+});
+
+test('a question without a confirmation statement is unaffected', async () => {
+  const store = memStore();
+  const cfg = make({ timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  const res = await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 1000, cfg);
+  assert.equal(res.ok, true);
+  assert.equal(res.question.id, 'b');
+});
+
+/* -------------------------------------------------- a question between a branch --- */
+
+const DETOUR = [
+  { id: 'pick', section: 'p1', type: 'choice', prompt: 'Which?', options: [{ label: 'One', next: 'a1' }, { label: 'Two', next: 'a2' }] },
+  { id: 'mid', section: 'p1', type: 'short', prompt: 'Between', branchFrom: 'pick' },
+  { id: 'a1', section: 'p2', type: 'short', prompt: 'Path one', next: null },
+  { id: 'a2', section: 'p2', type: 'short', prompt: 'Path two', next: null },
+];
+
+test('a question can be asked between a branch and the route it chose', async () => {
+  const store = memStore();
+  const cfg = config({ sections: SECTIONS, questions: DETOUR, timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+
+  // Every route is the same length, so the candidate is told a total rather than a range.
+  const first = await handle(store, { action: 'state', token }, T0 + 100, cfg);
+  assert.equal(first.total, 3);
+  assert.equal(first.question.id, 'pick');
+
+  const after = await handle(store, { action: 'answer', token, index: 0, questionId: 'pick', value: 1 }, T0 + 200, cfg);
+  assert.equal(after.question.id, 'mid', 'the detour comes before the branch opens');
+
+  const resumed = await handle(store, { action: 'answer', token, index: 1, questionId: 'mid', value: 'in between' }, T0 + 300, cfg);
+  assert.equal(resumed.question.id, 'a2', 'and then the route the option chose');
+  assert.equal(resumed.question.nextPart, null, 'nothing follows it but the end');
+
+  const done = await handle(store, { action: 'answer', token, index: 2, questionId: 'a2', value: 'two' }, T0 + 400, cfg);
+  assert.equal(done.phase, 'done');
+});
+
+/* ---------------------------------------------------- review and submit ----------- */
+
+const REVIEW = {
+  label: 'Review and submit',
+  summary: 'Check what we received',
+  recommendedMin: 5,
+  heading: 'Review and submit',
+  body: 'This is what we hold.',
+  note: 'Submitting closes the exercise.',
+  button: 'Submit and finish',
+  confirm: 'Yes, submit everything',
+};
+
+test('with a review screen the last answer does not end the sitting', async () => {
+  const store = memStore();
+  const cfg = make({ timing: { mode: 'none' }, review: REVIEW });
+  const token = await started(store, cfg);
+
+  // The last question no longer claims to be the final submission: the review screen is.
+  const one = await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 100, cfg);
+  await handle(store, { action: 'answer', token, index: 1, value: 'b' }, T0 + 200, cfg);
+  const last = await handle(store, { action: 'state', token }, T0 + 250, cfg);
+  assert.equal(last.question.id, 'c');
+  assert.equal(last.question.isLast, false, 'a review screen follows, so this is not the last screen');
+  assert.equal(last.question.nextPart, 'Review and submit');
+  assert.equal(one.question.isLast, false);
+
+  const shown = await handle(store, { action: 'answer', token, index: 2, value: 'c' }, T0 + 300, cfg);
+  assert.equal(shown.phase, 'review');
+  assert.equal(shown.question, undefined, 'nothing on the review screen takes an answer');
+  assert.equal(shown.reviewScreen.heading, 'Review and submit');
+  assert.equal(shown.reviewScreen.button, 'Submit and finish');
+  assert.deepEqual(shown.reviewScreen.answers.map((a) => a.value), ['a', 'b', 'c']);
+  const stillOpen = await store.get(`c:${token}`);
+  assert.ok(!stillOpen.finishedAt, 'not finished until they hand it in');
+
+  // The bar carries the review step as a part of its own, and it is where they are.
+  const here = shown.progress.sections;
+  assert.equal(here.length, 3);
+  assert.equal(here[2].label, 'Review and submit');
+  assert.equal(here[2].isReview, true);
+  assert.equal(here[2].state, 'current');
+  assert.equal(shown.progress.sectionNumber, 3);
+
+  const finished = await handle(store, { action: 'submit', token }, T0 + 400, cfg);
+  assert.equal(finished.phase, 'done');
+  assert.equal(finished.outro.title, 'Thank you, Opt. That is all submitted.');
+  assert.equal((await store.get(`c:${token}`)).finishedAt, T0 + 400);
+  assert.equal(finished.progress.sections[2].state, 'done', 'the review step reads as done afterwards');
+
+  // Handing in twice is a double click, not an error.
+  const again = await handle(store, { action: 'submit', token }, T0 + 500, cfg);
+  assert.equal(again.phase, 'done');
+  assert.equal((await store.get(`c:${token}`)).finishedAt, T0 + 400, 'and it does not move the finish time');
+});
+
+test('without a review screen nothing changes: the last answer finishes the test', async () => {
+  const store = memStore();
+  const cfg = make({ timing: { mode: 'none' } });
+  const token = await started(store, cfg);
+  await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 100, cfg);
+  await handle(store, { action: 'answer', token, index: 1, value: 'b' }, T0 + 200, cfg);
+  const last = await handle(store, { action: 'state', token }, T0 + 250, cfg);
+  assert.equal(last.question.isLast, true);
+  const done = await handle(store, { action: 'answer', token, index: 2, value: 'c' }, T0 + 300, cfg);
+  assert.equal(done.phase, 'done');
+  assert.equal(done.reviewScreen, undefined);
+  assert.equal((await store.get(`c:${token}`)).finishedAt, T0 + 300);
+});
+
+test('a sitting cut short by the clock is not sent to the review screen', async () => {
+  const store = memStore();
+  const cfg = make({ durationSec: 600, graceSec: 0, review: REVIEW });
+  const token = await started(store, cfg);
+  await handle(store, { action: 'answer', token, index: 0, value: 'a' }, T0 + 100, cfg);
+  await handle(store, { action: 'answer', token, index: 1, value: 'b' }, T0 + 200, cfg);
+  await handle(store, { action: 'answer', token, index: 2, value: 'c' }, T0 + 300, cfg);
+
+  // Answered everything in time: the review screen is theirs.
+  assert.equal((await handle(store, { action: 'state', token }, T0 + 400, cfg)).phase, 'review');
+  // Then the clock runs out while they are reading it, and the sitting closes instead.
+  const late = await handle(store, { action: 'state', token }, T0 + 900 * 1000, cfg);
+  assert.equal(late.phase, 'done');
+  assert.equal(late.reviewScreen, undefined);
+});
+
+test('a deployment can say which test it is actually serving', async () => {
+  const cfg = make({ timing: { mode: 'none' }, review: REVIEW });
+  const shape = liveShape(cfg);
+  assert.equal(shape.questions, 3);
+  assert.deepEqual(shape.route, ['a', 'b', 'c']);
+  assert.deepEqual(shape.parts, ['Part 1', 'Part 2']);
+  assert.equal(shape.review, true);
+
+  // A question asked between a branch and its routes says so, because that is exactly the kind of
+  // change that is invisible from the outside when an old build is still being served.
+  const detoured = liveShape(config({ sections: SECTIONS, questions: DETOUR, timing: { mode: 'none' } }));
+  assert.deepEqual(detoured.route, ['pick', 'mid (after pick)', 'a1', 'a2']);
+  assert.equal(detoured.review, false);
 });

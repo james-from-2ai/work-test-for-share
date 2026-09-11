@@ -15,8 +15,24 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { airtableStore } from '../functions/_lib/wt-airtable.mjs';
-import { handle, createCandidates, listCandidates } from '../functions/_lib/wt-engine.mjs';
-import { QUESTIONS } from '../functions/_lib/wt-questions.mjs';
+import {
+  handle as engineHandle, createCandidates, listCandidates as engineListCandidates, config as engineConfig,
+} from '../functions/_lib/wt-engine.mjs';
+import {
+  DURATION_SEC, GRACE_SEC, QUESTIONS, BRIEFS, SECTIONS, TIMING, NAVIGATION, INTEGRITY, INTRO, OUTRO,
+} from './fixtures/pm-test.mjs';
+
+/**
+ * The end-to-end test below drives the engine against the PM fixture rather than the live test,
+ * so it keeps meaning the same thing whichever assessment is compiled into wt-questions.mjs.
+ */
+const FIXTURE = {
+  durationSec: DURATION_SEC, graceSec: GRACE_SEC, questions: QUESTIONS, sections: SECTIONS, briefs: BRIEFS,
+  timing: TIMING, navigation: NAVIGATION, integrity: INTEGRITY, intro: INTRO, outro: OUTRO,
+};
+const config = (overrides = {}) => engineConfig({ ...FIXTURE, ...overrides });
+const handle = (store, body, now, cfg = config()) => engineHandle(store, body, now, cfg);
+const listCandidates = (store, now, cfg = config()) => engineListCandidates(store, now, cfg);
 
 const BASE = 'appFAKE0000000000';
 const TABLE = 'tblFAKE0000000000';
@@ -28,10 +44,27 @@ function fakeAirtable({ failFirst = 0, failStatus = 429 } = {}) {
   const calls = [];
   let failures = failFirst;
 
+  const uploads = [];
   const fetchImpl = async (url, init = {}) => {
     const u = new URL(url);
     const method = init.method || 'GET';
     calls.push({ method, url: u.pathname + '?' + u.searchParams.toString() });
+
+    // Airtable's attachment upload lives on a different host from the records API. Real Airtable
+    // answers with the whole record, its attachment cell now one entry longer.
+    if (u.hostname === 'content.airtable.com') {
+      assert.equal(init.headers.authorization, 'Bearer tok', 'the token was not sent to the content host');
+      const [, , base, recordId, fieldName, op] = u.pathname.split('/');
+      assert.equal(base, BASE);
+      assert.equal(op, 'uploadAttachment');
+      assert.ok(records.has(recordId), `upload targeted record ${recordId}, which does not exist`);
+      const body = JSON.parse(init.body);
+      uploads.push({ recordId, fieldName: decodeURIComponent(fieldName), ...body });
+      const existing = (records.get(recordId)[fieldName] || []);
+      const made = { id: `att${uploads.length}`, url: `https://dl.airtable.test/${uploads.length}`, filename: body.filename, size: 1 };
+      records.get(recordId)[fieldName] = [...existing, made];
+      return { ok: true, status: 200, json: async () => ({ id: recordId, fields: { [fieldName]: [...existing, made] } }) };
+    }
 
     if (failures > 0) {
       failures -= 1;
@@ -87,8 +120,71 @@ function fakeAirtable({ failFirst = 0, failStatus = 429 } = {}) {
   };
 
   const store = airtableStore({ token: 'tok', baseId: BASE, tableId: TABLE, fetchImpl });
-  return { store, records, calls, fetchImpl };
+  return { store, records, calls, uploads, fetchImpl };
 }
+
+/* ------------------------------------------------------------------ uploads --------- */
+
+test('a file goes to the uploadAttachment endpoint of the session row, in the Files column', async () => {
+  const { store, records, uploads } = fakeAirtable();
+  await store.put('c:abc', { token: 'abc', name: 'Amina', answers: [] });
+  const [recordId] = [...records.keys()];
+
+  const out = await store.putFile('c:abc', { filename: 's1_response--memo.pdf', contentType: 'application/pdf', base64: 'JVBERi0xLjQK' });
+
+  assert.equal(uploads.length, 1);
+  assert.equal(uploads[0].recordId, recordId, 'the file was not attached to the session row');
+  assert.equal(uploads[0].fieldName, 'Files', 'the default column is Files');
+  assert.deepEqual(
+    { contentType: uploads[0].contentType, file: uploads[0].file, filename: uploads[0].filename },
+    { contentType: 'application/pdf', file: 'JVBERi0xLjQK', filename: 's1_response--memo.pdf' },
+    'the request body is not the shape Airtable expects',
+  );
+  assert.equal(out.attachmentId, 'att1');
+  assert.equal(out.recordId, recordId);
+  assert.equal(out.filename, 's1_response--memo.pdf');
+});
+
+test('the attachment column name follows fileField', async () => {
+  const { records, uploads, fetchImpl } = fakeAirtable();
+  const store = airtableStore({ token: 'tok', baseId: BASE, tableId: TABLE, fileField: 'Candidate files', fetchImpl });
+  await store.put('c:abc', { token: 'abc', name: 'Amina', answers: [] });
+  await store.putFile('c:abc', { filename: 'x.pdf', contentType: 'application/pdf', base64: 'JVBERi0=' });
+  assert.equal(uploads[0].fieldName, 'Candidate files');
+  assert.equal(records.size, 1);
+});
+
+test('a file for a session that does not exist is refused, not attached to a new row', async () => {
+  const { store, uploads, records } = fakeAirtable();
+  await assert.rejects(
+    () => store.putFile('c:ghost', { filename: 'x.pdf', contentType: 'application/pdf', base64: 'JVBERi0=' }),
+    /no record for c:ghost/,
+  );
+  assert.equal(uploads.length, 0);
+  assert.equal(records.size, 0);
+});
+
+test('the engine end to end: an either question answered with a file only lands the file on the row', async () => {
+  const { store, records, uploads } = fakeAirtable();
+  const cfg = config({
+    sections: [{ id: 'p1', label: 'Part 1', summary: 'Only', recommendedMin: 10 }],
+    questions: [{ id: 'memo', section: 'p1', type: 'rich', require: 'either', accept: ['pdf'], prompt: 'Memo?', next: null }],
+    timing: { mode: 'none' },
+  });
+  const reg = await handle(store, { action: 'register', name: 'Amina Yusuf', email: 'amina@example.com' }, T0, cfg);
+  await handle(store, { action: 'start', token: reg.token }, T0, cfg);
+  const pdf = Buffer.from('%PDF-1.7 real enough', 'binary').toString('base64');
+  const up = await handle(store, { action: 'upload', token: reg.token, questionId: 'memo', filename: 'memo.pdf', contentType: 'application/pdf', data: pdf }, T0 + 1000, cfg);
+  assert.equal(up.ok, true, JSON.stringify(up));
+  assert.equal(uploads.length, 1);
+  assert.equal(uploads[0].filename, 'memo--memo.pdf', 'the question id prefixes the filename');
+  const done = await handle(store, { action: 'answer', token: reg.token, index: 0, questionId: 'memo', value: [] }, T0 + 2000, cfg);
+  assert.equal(done.ok, true, JSON.stringify(done));
+  assert.equal(done.phase, 'done');
+  const row = [...records.values()].find((f) => f.Key === `c:${reg.token}`);
+  assert.equal(row.Files.length, 1, 'the row does not carry the attachment');
+  assert.match(row.Answers, /memo\.pdf/, 'the readable mirror does not mention the file');
+});
 
 const T0 = 1_800_000_000_000;
 const answerFor = (i) => (QUESTIONS[i].type === 'rich'

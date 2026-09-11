@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Work test admin</title>
+<title>EVP work test admin</title>
 <link rel="stylesheet" href="assets/styles.css">
+<script src="assets/theme.js"></script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f5f4f'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M16 10.5V16l3.6 2.6' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
 <style>
   .wrap { max-width: 68rem; }
@@ -35,6 +36,7 @@
   .ans-meta { margin-bottom: 0.5rem; }
   .ans-file { font-size: 0.85rem; margin: 0.4rem 0 0; padding: 0.35rem 0.5rem;
               border-left: 2px solid var(--warn); background: rgba(127,127,127,0.07); }
+  .ans-links { font-size: 0.85rem; margin: 0.3rem 0 0.4rem; padding-left: 1.4rem; word-break: break-all; }
   button.ghost { font: inherit; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 0.3rem 0.6rem; color: inherit; cursor: pointer; }
   button.ghost.danger { color: var(--danger); }
   td.acts { white-space: nowrap; }
@@ -53,13 +55,9 @@
 </style>
 </head>
 <body>
-<div class="demo-banner">
-  <strong>Demo.</strong> This is a public preview of 2AI's timed work test, for showing people how it works.
-  Anything you type here is visible to anyone with the link, so use a made-up name and do not enter anything private.
-  It is not a live application and nobody is assessed on it.
-</div><main class="wrap">
+<main class="wrap">
   <section class="card">
-    <p class="eyebrow">Internal</p>
+    <p class="eyebrow">Internal &middot; Evidence Action EVP work test</p>
     <h1>Work test admin</h1>
     <p class="muted">The admin key is held in this tab only, never written to storage. Reloading asks for it again, on purpose.</p>
     <div class="row">
@@ -70,6 +68,13 @@
       <button class="primary" id="load">Load results</button>
     </div>
     <p class="err" id="err" hidden></p>
+    <!--
+      Which build this page is talking to, read back from the engine that enforces it. Cloudflare
+      Pages gives every deployment its own permanent hostname, so a bookmarked admin or candidate
+      link keeps serving the build it was made on. If this line does not match the test you expect,
+      you are on an old deployment: open the project's own URL and issue links from there.
+    -->
+    <p class="muted small" id="shape" hidden></p>
   </section>
 
   <section class="card">
@@ -114,8 +119,8 @@ async function admin(action, extra = {}) {
   if (action === 'csv') return res;
   const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
   // The server may attach a diagnostic, but only to a caller who already sent a key, so a
-  // passer-by on this public demo never sees one. To whoever is actually setting the deployment
-  // up, the specific reason is the difference between fixable and mysterious.
+  // passer-by on this open hostname never sees one. To whoever is actually setting the
+  // deployment up, the specific reason is the difference between fixable and mysterious.
   if (!data.ok && data.visibleNames) {
     return fail(`ADMIN_KEY has not reached this deployment. What it can see: ${data.visibleNames.join(', ') || '(nothing)'}. `
       + 'If ADMIN_KEY is missing from that list, it was saved on the wrong environment or the variable was never committed. '
@@ -257,21 +262,65 @@ function openCandidate(r, base) {
       em.textContent = 'not reached: the time for this part ran out';
       body.append(em);
     } else {
-      renderAnswer(body, a.value);
+      // A decision question records the option picked alongside the write-up.
+      if (a.choice) {
+        const pick = document.createElement('p');
+        const strong = document.createElement('strong');
+        strong.textContent = 'Recommended: ';
+        pick.append(strong, document.createTextNode(a.choice));
+        body.append(pick);
+      }
+      const files = Array.isArray(a.uploads) && a.uploads.length ? a.uploads : a.upload ? [a.upload] : [];
+      if (files.length && (!Array.isArray(a.value) || !a.value.length) && !(typeof a.value === 'string' && a.value.trim())) {
+        const em = document.createElement('em');
+        em.className = 'muted';
+        em.textContent = 'answered with the file below, no text';
+        body.append(em);
+      } else {
+        renderAnswer(body, a.value);
+      }
     }
     sec.append(body);
 
-    if (a.upload) {
-      const f = document.createElement('p');
-      f.className = 'ans-file';
+    if (Array.isArray(a.links) && a.links.length) {
+      const ul = document.createElement('ul');
+      ul.className = 'ans-links';
+      for (const l of a.links) {
+        const li = document.createElement('li');
+        // Candidate-supplied URLs. Only http(s) becomes a link, and it opens in a new tab with no
+        // referrer or opener, the same caution as a downloaded file: it came from outside.
+        if (/^https?:\/\/\S+$/i.test(l)) {
+          const anchor = document.createElement('a');
+          anchor.href = l;
+          anchor.target = '_blank';
+          anchor.rel = 'noopener noreferrer nofollow';
+          anchor.textContent = l;
+          li.append(anchor);
+        } else {
+          li.textContent = l;
+        }
+        ul.append(li);
+      }
+      const head = document.createElement('p');
+      head.className = 'ans-file';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Links: ';
+      head.append(strong, document.createTextNode('shared conversations the candidate gave us. They open in a new tab.'));
+      sec.append(head, ul);
+    }
+
+    const files = Array.isArray(a.uploads) && a.uploads.length ? a.uploads : a.upload ? [a.upload] : [];
+    for (const f of files) {
+      const line = document.createElement('p');
+      line.className = 'ans-file';
       const ft = document.createElement('strong');
       ft.textContent = 'File: ';
-      f.append(ft, document.createTextNode(`${a.upload.filename} (${Math.round(a.upload.size / 1000)} KB)`));
+      line.append(ft, document.createTextNode(`${f.filename} (${Math.round(f.size / 1000)} KB)`));
       const note = document.createElement('span');
       note.className = 'muted';
-      note.textContent = '. Open it from the Files column on this candidate\u2019s Airtable row, and download it rather than previewing it: it came from outside.';
-      f.append(note);
-      sec.append(f);
+      note.textContent = `. In the Files column on this candidate\u2019s Airtable row as ${a.id}--${f.filename}. Download it rather than previewing it: it came from outside.`;
+      line.append(note);
+      sec.append(line);
     }
 
     const meta = document.createElement('p');
@@ -380,27 +429,28 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': 
 
 async function load() {
   const data = await admin('list');
-  if (data.ok) renderRows(data.rows, data.base);
+  if (!data.ok) return;
+  renderRows(data.rows, data.base);
+  renderShape(data.shape, data.base);
+}
+
+/** The route this deployment serves, so an old deployment is visible rather than inferred. */
+function renderShape(shape, base) {
+  const el = $('#shape');
+  if (!shape) return;
+  el.hidden = false;
+  el.textContent = `Serving ${shape.questions} questions from ${base}: `
+    + `${shape.route.join(' \u2192 ')}. Parts: ${shape.parts.join(', ')}.`
+    + ` Review screen: ${shape.review ? 'yes' : 'no'}.`;
 }
 
 $('#load').addEventListener('click', load);
 
-/**
- * `?k=` prefills the admin key and loads straight away, so a link can be handed to someone who
- * should not have to be told what to paste where.
- *
- * Only ever use this with a key you are happy to have in browser history, chat logs, and any
- * referrer header the page emits: that is fine for a throwaway demo key, and a bad idea for the
- * key guarding real candidates' answers.
+/*
+ * The public demo accepted the admin key from a `?k=` query string. This deployment does not:
+ * the key here guards real candidates' answers, and a key in a URL ends up in browser history,
+ * chat logs and referrer headers. Paste it into the box.
  */
-(function prefillFromUrl() {
-  const k = new URLSearchParams(location.search).get('k');
-  if (!k) return;
-  $('#key').value = k;
-  // Drop it from the address bar so it is not casually re-shared or bookmarked.
-  history.replaceState(null, '', location.pathname);
-  load();
-})();
 
 $('#create').addEventListener('click', async () => {
   const people = $('#people').value.split('\n').map((line) => {

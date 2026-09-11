@@ -146,8 +146,30 @@ test('exporting the live test produces a spec that applies back cleanly', () => 
   checkParses(generate(spec), 'the round-tripped live test');
 });
 
+/**
+ * The check above only proved the round trip produces valid code, and that is how the exporter
+ * came to drop REVIEW without anything failing: the result still compiled, it just no longer had
+ * a review-and-submit screen. Comparing the generated source against the committed file catches
+ * anything the exporter forgets, not only the one field somebody thought to assert on.
+ *
+ * Everything above the first `export const` is the header comment, which carries the spec's
+ * `notes` and its filename. Those cannot come back out of the module, since a comment is not a
+ * value, so the comparison starts at the first declaration.
+ */
+test('the round trip preserves every value in the live test', () => {
+  const body = (source) => {
+    const at = source.indexOf('export const');
+    assert.ok(at > 0, 'no declarations found in the generated file');
+    return source.slice(at).trimEnd();
+  };
+  const spec = JSON.parse(run(['tools/spec-export.mjs']));
+  const committed = readFileSync(join(ROOT, 'functions/_lib/wt-questions.mjs'), 'utf8');
+  assert.equal(body(generate(spec)), body(committed),
+    'exporting the live test and applying it back changed it');
+});
+
 test('the shipped example specs are all valid', () => {
-  for (const name of ['example-branching-spec.json', 'evp-demo-spec.json']) {
+  for (const name of ['example-branching-spec.json', 'evp-spec.json']) {
     const spec = JSON.parse(readFileSync(join(ROOT, 'tools', name), 'utf8'));
     checkParses(generate(spec), name);
   }

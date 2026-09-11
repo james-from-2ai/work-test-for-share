@@ -101,6 +101,10 @@ const REJECTIONS = {
   no_edit: 'This test does not allow changing an answer once it is submitted.',
   no_back: 'This test does not allow going back.',
   not_an_upload: 'This question does not take a file.',
+  no_choice: 'Select one option to continue.',
+  too_many_files: 'This question already has as many files as it takes.',
+  bad_link: 'One of the links is not a web address. Each line should be one link starting with https://.',
+  not_confirmed: 'That was not confirmed, so nothing was submitted. Press the button again and confirm.',
 };
 
 /* ---------------------------------------------------------------------- drafts ------- */
@@ -142,7 +146,11 @@ function loadDraft(qid) {
 
 function clearDraft(qid) {
   clearTimeout(draftTimer);
-  try { localStorage.removeItem(draftKey(qid)); } catch { /* nothing to clear */ }
+  try {
+    localStorage.removeItem(draftKey(qid));
+    localStorage.removeItem(`${draftKey(qid)}:mode`);
+    localStorage.removeItem(`${draftKey(qid)}:links`);
+  } catch { /* nothing to clear */ }
 }
 
 /** Once the test is over there is nothing a draft could be restored into. */
@@ -158,6 +166,9 @@ function clearAllDrafts() {
 
 function screen(id) {
   app.replaceChildren($(`#tpl-${id}`).content.cloneNode(true));
+  // A new screen starts at the top. Without this, submitting a long question leaves the next one
+  // scrolled to wherever the button was, which on a brief this size is a long way from the start.
+  window.scrollTo(0, 0);
   return app;
 }
 
@@ -336,6 +347,26 @@ function renderIntro(intro) {
     hook('blurb').hidden = false;
   }
 
+  // Three tiles: time, structure, format. Written by the server from the settings, so they say
+  // the same thing as the rules underneath, only faster.
+  const glance = hook('glance');
+  if (glance && Array.isArray(intro.glance) && intro.glance.length) {
+    glance.replaceChildren();
+    for (const g of intro.glance) {
+      const tile = document.createElement('div');
+      tile.className = 'glance-tile';
+      const k = document.createElement('div');
+      k.className = 'glance-k';
+      k.textContent = g.label;
+      const v = document.createElement('div');
+      v.className = 'glance-v';
+      v.textContent = g.text;
+      tile.append(k, v);
+      glance.append(tile);
+    }
+    glance.hidden = false;
+  }
+
   const list = hook('rules');
   list.replaceChildren();
   for (const rule of intro.rules || []) {
@@ -416,8 +447,12 @@ function renderInstructions(state) {
 
 /* -------------------------------------------------------------------- progress ------- */
 
+/** "How you used AI" mid-sentence is "how you used AI", not "how you used ai". */
+const lowerFirst = (t) => (t ? t.charAt(0).toLowerCase() + t.slice(1) : '');
+
 /** How many questions a part holds, or an honest refusal when the branch decides. */
 function countOf(s) {
+  if (s.isReview) return 'nothing to answer';
   if (s.total == null) return 'a number of questions that depends on your answers';
   return plural(s.total, 'question');
 }
@@ -435,6 +470,7 @@ function renderProgress(state, { preview = false } = {}) {
   const mode = state.timing ? state.timing.mode : 'total';
 
   track.replaceChildren();
+  let stepNo = 1;
   for (const s of progress.sections) {
     // A part this candidate's branch routes around is not drawn at all. The server has already
     // taken it out of the shares, so drawing it would leave a slice nothing can ever fill.
@@ -445,16 +481,32 @@ function renderProgress(state, { preview = false } = {}) {
     seg.style.flexGrow = String(s.recommendedMin);
     seg.title = `${s.label}: ${s.summary}. About ${s.recommendedMin} minutes, ${countOf(s)}.`;
 
+    // A step: numbered dot and label, a slim bar that fills, and what the part is expected to take.
+    const head = document.createElement('div');
+    head.className = 'seg-head';
+    const dot = document.createElement('span');
+    dot.className = 'seg-dot';
+    dot.textContent = s.state === 'done' ? '✓' : String(stepNo);
+    const tag = document.createElement('span');
+    tag.className = 'seg-tag';
+    tag.textContent = s.label;
+    head.append(dot, tag);
+
+    const bar = document.createElement('div');
+    bar.className = 'seg-bar';
     const fill = document.createElement('div');
     fill.className = 'seg-fill';
     fill.style.width = `${s.fill}%`;
-    seg.append(fill);
+    bar.append(fill);
 
-    const tag = document.createElement('span');
-    tag.className = 'seg-tag';
-    tag.textContent = `${s.label} · ${s.share}%`;
-    seg.append(tag);
+    const sub = document.createElement('div');
+    sub.className = 'seg-sub';
+    sub.textContent = `about ${s.recommendedMin} min · ${s.isReview ? 'check and hand in'
+      : s.total == null ? 'questions vary' : plural(s.total, 'question')}`;
+
+    seg.append(head, bar, sub);
     track.append(seg);
+    stepNo += 1;
   }
 
   const live = progress.sections.filter((s) => s.state !== 'skipped');
@@ -465,7 +517,7 @@ function renderProgress(state, { preview = false } = {}) {
       : mode === 'section' ? 'Each part is timed separately, and running one out moves you on to the next.'
       : 'Those timings are a suggestion, not a rule; the only hard limit is the total.';
     note.textContent = live
-      .map((s) => `${s.label}, ${s.summary.toLowerCase()}: ${countOf(s)}, ${minutesOf(s)} (${s.share}% of the work)`)
+      .map((s) => `${s.label}, ${lowerFirst(s.summary)}: ${countOf(s)}, ${minutesOf(s)} (${s.share}% of the work)`)
       .join('. ') + `. ${tail}`;
     return;
   }
@@ -473,7 +525,9 @@ function renderProgress(state, { preview = false } = {}) {
   const here = progress.sections[progress.sectionNumber - 1];
   const rest = progress.sections.slice(progress.sectionNumber).filter((s) => s.state !== 'skipped');
   const parts = [];
-  if (here) {
+  if (here && here.isReview) {
+    parts.push(`${here.label} of ${progress.sectionTotal}: ${here.summary}. There is nothing left to answer.`);
+  } else if (here) {
     const where = here.total == null
       ? `Question ${progress.inSection} in this part`
       : `Question ${progress.inSection} of ${here.total} in this part`;
@@ -484,7 +538,7 @@ function renderProgress(state, { preview = false } = {}) {
     parts.push(`${here.label} of ${progress.sectionTotal}: ${here.summary}. ${where}, and ${budget}.`);
   }
   parts.push(rest.length
-    ? `Still to come: ${rest.map((s) => `${s.label} (${s.summary.toLowerCase()}, ${minutesOf(s)})`).join(', ')}.`
+    ? `Still to come: ${rest.map((s) => `${s.label} (${lowerFirst(s.summary)}, ${minutesOf(s)})`).join(', ')}.`
     : 'This is the last part.');
   note.textContent = parts.join(' ');
 }
@@ -507,6 +561,114 @@ function renderBrief(brief) {
       const p = document.createElement('p');
       p.textContent = block.text;
       panel.append(p);
+    } else if (block.type === 'h') {
+      // A subheading inside the brief, for a packet long enough to need signposts. One level
+      // only: the brief's own heading is the h2 above, so this is the step below it.
+      const h = document.createElement('h3');
+      h.className = 'brief-sub';
+      h.textContent = block.text;
+      panel.append(h);
+    } else if (block.type === 'list') {
+      const ul = document.createElement('ul');
+      for (const item of block.items || []) {
+        const li = document.createElement('li');
+        li.textContent = item;
+        ul.append(li);
+      }
+      panel.append(ul);
+    } else if (block.type === 'note') {
+      // A tinted callout for instructions about the exercise itself, so they read as coming from
+      // us rather than as part of the case a candidate is analysing.
+      const box = document.createElement('aside');
+      box.className = 'brief-note';
+      if (block.title) {
+        const h = document.createElement('p');
+        h.className = 'brief-note-title';
+        h.textContent = block.title;
+        box.append(h);
+      }
+      if (block.text) {
+        const p = document.createElement('p');
+        p.textContent = block.text;
+        box.append(p);
+      }
+      if (Array.isArray(block.items) && block.items.length) {
+        const ul = document.createElement('ul');
+        for (const item of block.items) {
+          const li = document.createElement('li');
+          li.textContent = item;
+          ul.append(li);
+        }
+        box.append(ul);
+      }
+      panel.append(box);
+    } else if (block.type === 'cards') {
+      // A set of parallel things: the options a candidate chooses between (side by side) or the
+      // numbered questions they answer (stacked). Each card is title, text, bullet points, and an
+      // optional closing line, all as text nodes.
+      const grid = document.createElement('div');
+      grid.className = `cards ${block.layout === 'stack' ? 'stack' : 'grid'}`;
+      for (const item of block.items || []) {
+        const card = document.createElement('div');
+        card.className = 'card-item';
+        if (item.title) {
+          const h = document.createElement('h4');
+          h.textContent = item.title;
+          card.append(h);
+        }
+        if (item.text) {
+          const p = document.createElement('p');
+          p.textContent = item.text;
+          card.append(p);
+        }
+        if (Array.isArray(item.points) && item.points.length) {
+          const ul = document.createElement('ul');
+          for (const pt of item.points) {
+            const li = document.createElement('li');
+            li.textContent = pt;
+            ul.append(li);
+          }
+          card.append(ul);
+        }
+        if (item.after) {
+          const p = document.createElement('p');
+          p.className = 'card-after';
+          p.textContent = item.after;
+          card.append(p);
+        }
+        grid.append(card);
+      }
+      panel.append(grid);
+    } else if (block.type === 'table') {
+      // Data tables, built cell by cell from text nodes. Nothing an author writes becomes markup,
+      // same as every other block; a table is just the one shape a bullet list cannot carry.
+      const wrap = document.createElement('div');
+      wrap.className = 'brief-table';
+      const table = document.createElement('table');
+      if (Array.isArray(block.head) && block.head.length) {
+        const thead = document.createElement('thead');
+        const tr = document.createElement('tr');
+        for (const cell of block.head) {
+          const th = document.createElement('th');
+          th.textContent = cell;
+          tr.append(th);
+        }
+        thead.append(tr);
+        table.append(thead);
+      }
+      const tbody = document.createElement('tbody');
+      for (const row of block.rows || []) {
+        const tr = document.createElement('tr');
+        for (const cell of row) {
+          const td = document.createElement('td');
+          td.textContent = cell;
+          tr.append(td);
+        }
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      wrap.append(table);
+      panel.append(wrap);
     } else if (block.type === 'quote') {
       const fig = document.createElement('figure');
       fig.className = 'quote';
@@ -823,7 +985,9 @@ function fileToBase64(file) {
  * Returns { has, busy }: whether a file is attached, and whether one is mid-upload.
  */
 function attachmentField(q, state, field, onChange) {
-  let attached = state.upload || (state.given && state.given.upload) || null;
+  const max = Number.isInteger(q.maxFiles) && q.maxFiles > 1 ? q.maxFiles : 1;
+  const given = state.given ? (state.given.uploads || (state.given.upload ? [state.given.upload] : [])) : [];
+  let attached = [].concat(state.uploads || state.upload || given || []).filter(Boolean);
   let busy = false;
 
   const box = document.createElement('div');
@@ -834,12 +998,24 @@ function attachmentField(q, state, field, onChange) {
   if (q.acceptAttr) file.accept = q.acceptAttr;
   const status = document.createElement('p');
   status.className = 'muted small upload-status';
+  const list = document.createElement('ul');
+  list.className = 'files-list';
 
   const paint = () => {
-    status.textContent = attached
-      ? `Attached: ${attached.filename} (${kb(attached.size)}). Choosing another file replaces it.`
-      : q.acceptText || 'No file chosen yet.';
-    status.classList.toggle('ok', !!attached);
+    list.replaceChildren();
+    if (max > 1) {
+      for (const f of attached) {
+        const li = document.createElement('li');
+        li.textContent = `${f.filename} (${kb(f.size)})`;
+        list.append(li);
+      }
+    }
+    if (!attached.length) status.textContent = q.acceptText || 'No file chosen yet.';
+    else if (max === 1) status.textContent = `Attached: ${attached[0].filename} (${kb(attached[0].size)}). Choosing another file replaces it.`;
+    else if (attached.length >= max) status.textContent = `${attached.length} files attached, which is the most this question takes.`;
+    else status.textContent = `${attached.length} of up to ${max} files attached. Choose another to add it.`;
+    status.classList.toggle('ok', attached.length > 0);
+    file.disabled = busy || (max > 1 && attached.length >= max);
   };
 
   file.addEventListener('change', async () => {
@@ -875,16 +1051,17 @@ function attachmentField(q, state, field, onChange) {
       onChange();
       return showError(res.detail || (res.error && REJECTIONS[res.error]) || RETRY_MSG);
     }
-    attached = res.uploaded;
+    attached = max > 1 ? (Array.isArray(res.uploads) ? res.uploads : [...attached, res.uploaded]) : [res.uploaded];
+    file.value = '';
     paint();
     onChange();
   });
 
-  box.append(file, status);
+  box.append(file, list, status);
   field.append(box);
   paint();
 
-  return { has: () => !!attached, busy: () => busy };
+  return { has: () => attached.length > 0, busy: () => busy, list: () => attached.slice() };
 }
 
 /** What a question insists on, said the way a candidate would want to hear it. */
@@ -932,14 +1109,19 @@ function renderQuestion(state) {
 
   const field = hook('field');
   const next = hook('next');
+  // When this answer closes a part, the button says where it goes, so "Lock in" is not a leap in
+  // the dark: the candidate knows Stage 1 is about to be sealed and Stage 2 is next.
   const nextLabel = past
     ? (canEdit ? 'Save this change' : 'Back to where I was')
-    : q.isLast ? 'Submit final answer' : 'Lock in and continue';
+    : q.isLast ? 'Submit final answer'
+    : q.nextPart ? `Lock in and continue to ${q.nextPart}`
+    : 'Lock in and continue';
   next.textContent = nextLabel;
 
   // The footer used to state "Answers are final once you continue" whatever the test allowed.
   hook('finality').textContent = past ? ''
     : canRevise ? 'You can come back and change this later.'
+    : q.nextPart && herePart ? `This is the last question in ${herePart.label}. Answers are final once you continue.`
     : 'Answers are final once you continue.';
 
   // Secondary actions, left of the primary button: review, and where allowed, Previous / Next.
@@ -965,6 +1147,8 @@ function renderQuestion(state) {
   // owns the decision so neither can re-enable it while the other still has grounds not to.
   let over = false;
   let attachment = null;
+  let focusEditor = null;
+  let readLinks = () => [];
   const refreshNext = () => { next.disabled = over || (attachment ? attachment.busy() : false); };
 
   // Drafts are for the question being answered, never for one being looked back at: there the
@@ -973,7 +1157,96 @@ function renderQuestion(state) {
 
   let read; // returns what we send as `value`
 
-  if (q.type === 'rich') {
+  /** Radio list for a question with options. Returns { el, read, set }; onPick fires on change. */
+  const optionList = (onPick) => {
+    const list = document.createElement('div');
+    list.className = 'opts';
+    q.options.forEach((opt, i) => {
+      const label = document.createElement('label');
+      label.className = 'opt';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'choice';
+      input.value = String(i);
+      const span = document.createElement('span');
+      span.textContent = opt;
+      label.append(input, span);
+      input.addEventListener('change', () => {
+        list.querySelectorAll('.opt').forEach((el) => el.classList.remove('sel'));
+        label.classList.add('sel');
+        onPick(i);
+      });
+      list.append(label);
+    });
+    const set = (i) => {
+      const inputs = list.querySelectorAll('input');
+      if (!Number.isInteger(i) || !inputs[i]) return false;
+      inputs[i].checked = true;
+      inputs[i].closest('.opt').classList.add('sel');
+      return true;
+    };
+    const readIndex = () => {
+      const sel = list.querySelector('input:checked');
+      return sel ? Number(sel.value) : null;
+    };
+    return { el: list, read: readIndex, set };
+  };
+
+  // On an either/or question the two ways of answering live in their own containers, so a chooser
+  // can show one at a time. Elsewhere these are just the field.
+  const textWrap = document.createElement('div');
+  textWrap.className = 'mode-text';
+  const fileWrap = document.createElement('div');
+  fileWrap.className = 'mode-file';
+  let mode = null; // 'text' | 'file' | null, only meaningful when a chooser is shown
+  let hadDraft = false;
+
+  if (q.type === 'decision') {
+    // One answer in two labelled parts: the option (which decides the route) and the write-up.
+    // Both are locked in together, which is the point: the write-up has to support the option.
+    const lblA = document.createElement('p');
+    lblA.className = 'part-label';
+    lblA.textContent = q.optionPrompt || 'Which option do you recommend?';
+    const opts = optionList(() => { saveDecision(); refreshNext(); });
+    const lblB = document.createElement('p');
+    lblB.className = 'part-label';
+    lblB.textContent = q.responsePrompt || 'Your written response';
+    field.append(lblA, opts.el, lblB);
+
+    const counter = document.createElement('p');
+    counter.className = 'counter';
+    const paint = () => {
+      const blocks = ed.read();
+      const chars = richChars(blocks);
+      const text = blocks.map((b) => b.runs.map((r) => r.t).join('')).join(' ').trim();
+      const words = text ? text.split(/\s+/).length : 0;
+      over = chars > q.maxLength;
+      counter.textContent = over
+        ? `${chars - q.maxLength} characters over the limit of ${q.maxLength}`
+        : `${words} words · ${chars} / ${q.maxLength} characters`;
+      counter.classList.toggle('over', over);
+      refreshNext();
+      saveDecision();
+    };
+    const ed = richEditor(q, textWrap, paint);
+    textWrap.append(counter);
+    field.append(textWrap);
+    function saveDecision() {
+      if (!past) queueDraft(q.id, { option: opts.read(), text: ed.read() });
+    }
+    const draft = past ? null : loadDraft(q.id);
+    if (draft && typeof draft === 'object' && !Array.isArray(draft)) {
+      const gotOption = opts.set(draft.option);
+      if (draft.text && !isBlank(draft.text)) {
+        renderStoredAnswer(ed.editor, draft.text, { blank: null });
+        hadDraft = true;
+      }
+      if (gotOption || hadDraft) noteRestored(field);
+    }
+    paint();
+    read = () => ({ option: opts.read(), text: mode === 'file' ? [] : ed.read() });
+    focusEditor = () => ed.editor.focus();
+  } else if (q.type === 'rich') {
     const counter = document.createElement('p');
     counter.className = 'counter';
     const paint = () => {
@@ -991,49 +1264,29 @@ function renderQuestion(state) {
       refreshNext();
       draftFor(blocks);
     };
-    const ed = richEditor(q, field, paint);
-    field.append(counter);
+    const ed = richEditor(q, textWrap, paint);
+    textWrap.append(counter);
+    field.append(textWrap);
     const draft = past ? null : loadDraft(q.id);
     if (draft && !isBlank(draft)) {
       renderStoredAnswer(ed.editor, draft, { blank: null });
-      noteRestored(field);
+      noteRestored(textWrap);
+      hadDraft = true;
     }
     paint();
-    read = ed.read;
-    if (!past) ed.editor.focus();
+    // In file mode nothing typed is submitted, which is what makes "either" mean one or the other.
+    read = () => (mode === 'file' ? [] : ed.read());
+    focusEditor = () => ed.editor.focus();
+    // preventScroll: the cursor goes in the box, but the page stays at the top of the brief.
+    // Focusing normally would scroll straight past everything the candidate is meant to read.
+    if (!past) ed.editor.focus({ preventScroll: true });
   } else if (q.type === 'choice') {
-    const list = document.createElement('div');
-    list.className = 'opts';
-    q.options.forEach((opt, i) => {
-      const label = document.createElement('label');
-      label.className = 'opt';
-      const input = document.createElement('input');
-      input.type = 'radio';
-      input.name = 'choice';
-      input.value = String(i);
-      const span = document.createElement('span');
-      span.textContent = opt;
-      label.append(input, span);
-      input.addEventListener('change', () => {
-        list.querySelectorAll('.opt').forEach((el) => el.classList.remove('sel'));
-        label.classList.add('sel');
-        if (!past) saveDraft(q.id, i);
-      });
-      list.append(label);
-    });
-    field.append(list);
-    read = () => {
-      const sel = list.querySelector('input:checked');
-      return sel ? Number(sel.value) : null;
-    };
+    const opts = optionList((i) => { if (!past) saveDraft(q.id, i); });
+    field.append(opts.el);
+    read = opts.read;
     const draft = past ? null : loadDraft(q.id);
-    const inputs = list.querySelectorAll('input');
-    if (Number.isInteger(draft) && inputs[draft]) {
-      inputs[draft].checked = true;
-      inputs[draft].closest('.opt').classList.add('sel');
-      noteRestored(field);
-    }
-    if (!past) list.querySelector('input')?.focus();
+    if (Number.isInteger(draft) && opts.set(draft)) noteRestored(field);
+    if (!past) opts.el.querySelector('input')?.focus({ preventScroll: true });
   } else {
     if (q.type === 'upload') {
       const lbl = document.createElement('label');
@@ -1066,13 +1319,166 @@ function renderQuestion(state) {
     input.addEventListener('input', () => { paint(); draftFor(input.value); });
     field.append(counter);
     guardPaste(input);
-    if (!past) input.focus();
+    if (!past) input.focus({ preventScroll: true });
     read = () => input.value.trim();
   }
 
-  if (q.attachment && q.attachment !== 'none') attachment = attachmentField(q, state, field, refreshNext);
+  /**
+   * Share links, when the question asks for them: a labelled section under the answer with the
+   * author's help text and any documentation links, then one link per line. Kept as its own field
+   * rather than "paste them into the box" so they can be checked, listed and clicked on later.
+   */
+  if (q.links && !past) {
+    const wrap = document.createElement('div');
+    wrap.className = 'links-wrap';
+    const lbl = document.createElement('p');
+    lbl.className = 'part-label';
+    lbl.textContent = q.links.prompt;
+    wrap.append(lbl);
+    if (q.links.help) {
+      const help = document.createElement('p');
+      help.className = 'part-help';
+      help.textContent = q.links.help;
+      wrap.append(help);
+    }
+    if (Array.isArray(q.links.docs) && q.links.docs.length) {
+      const docs = document.createElement('p');
+      docs.className = 'part-help part-docs';
+      docs.append(document.createTextNode('How to: '));
+      q.links.docs.forEach((d, i) => {
+        if (!/^https?:\/\//i.test(d.url)) return;
+        if (i) docs.append(document.createTextNode(' · '));
+        const a = document.createElement('a');
+        a.href = d.url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = d.label;
+        docs.append(a);
+      });
+      wrap.append(docs);
+    }
+    const ta = document.createElement('textarea');
+    ta.className = 'links-input';
+    ta.rows = 3;
+    ta.placeholder = 'https://…  (one link per line)';
+    ta.spellcheck = false;
+    ta.autocomplete = 'off';
+    const linksKey = `${draftKey(q.id)}:links`;
+    try { const saved = localStorage.getItem(linksKey); if (saved) ta.value = saved; } catch { /* fine */ }
+    ta.addEventListener('input', () => {
+      try { if (ta.value.trim()) localStorage.setItem(linksKey, ta.value); else localStorage.removeItem(linksKey); } catch { /* fine */ }
+      showError('');
+    });
+    wrap.append(ta);
+    field.append(wrap);
+    readLinks = () => ta.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  } else if (q.links && past) {
+    const given = state.given && Array.isArray(state.given.links) ? state.given.links : [];
+    if (given.length) {
+      const lbl = document.createElement('p');
+      lbl.className = 'part-label';
+      lbl.textContent = q.links.prompt;
+      const ul = document.createElement('ul');
+      ul.className = 'files-list';
+      for (const l of given) {
+        const li = document.createElement('li');
+        li.textContent = l;
+        ul.append(li);
+      }
+      field.append(lbl, ul);
+    }
+  }
 
-  const note = requirementNote(q);
+  if (q.attachment && q.attachment !== 'none') {
+    // When the file part is a section of its own (say, transcripts under a written disclosure),
+    // it gets its own label and help text, so nobody mistakes it for an alternative to the box.
+    if (q.attachmentPrompt) {
+      const lbl = document.createElement('p');
+      lbl.className = 'part-label';
+      lbl.textContent = q.attachmentPrompt;
+      fileWrap.append(lbl);
+    }
+    if (q.attachmentHelp) {
+      const help = document.createElement('p');
+      help.className = 'part-help';
+      help.textContent = q.attachmentHelp;
+      fileWrap.append(help);
+    }
+    attachment = attachmentField(q, state, fileWrap, refreshNext);
+    field.append(fileWrap);
+  }
+
+  /**
+   * Either/or, made literal. Rather than an editor and a file input side by side with a note saying
+   * one is enough, the candidate first says how they want to respond, and only that input appears.
+   * The choice is remembered per question so a reload lands them back where they were, and a file
+   * already uploaded, or a draft already typed, decides it for them.
+   */
+  const chooser = q.require === 'either' && (q.type === 'rich' || q.type === 'decision') && !past;
+  if (chooser) {
+    const box = document.createElement('div');
+    box.className = 'mode-choice';
+    const legend = document.createElement('p');
+    legend.className = 'lbl';
+    legend.textContent = 'How would you like to respond? Choose one.';
+    const opts = document.createElement('div');
+    opts.className = 'opts two';
+    const radios = {};
+    const option = (value, title, sub) => {
+      const label = document.createElement('label');
+      label.className = 'opt';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'mode';
+      input.value = value;
+      const text = document.createElement('span');
+      const strong = document.createElement('strong');
+      strong.textContent = title;
+      const small = document.createElement('span');
+      small.className = 'opt-sub';
+      small.textContent = sub;
+      text.append(strong, small);
+      label.append(input, text);
+      input.addEventListener('change', () => apply(value, true));
+      radios[value] = { input, label };
+      opts.append(label);
+    };
+    const allowed = Array.isArray(q.accept) && q.accept.length === 1 && q.accept[0] === 'pdf' ? 'a PDF' : 'a PDF or Word document';
+    const mb = q.maxBytes ? (q.maxBytes / 1_000_000).toFixed(1) : '4.5';
+    const many = q.maxFiles > 1;
+    const m = q.modes && typeof q.modes === 'object' ? q.modes : {};
+    option('text', (m.text && m.text.title) || 'Type or paste it here',
+      (m.text && m.text.sub) || 'We recommend drafting in Word or Google Docs and pasting it in, so you keep your own copy. Headings, bold and lists survive the paste.');
+    option('file', (m.file && m.file.title) || (many ? `Attach ${allowed.replace(/^a /, '')} files` : `Attach ${allowed}`),
+      (m.file && m.file.sub) || `From Word or Google Docs: File, then Save As or Download, and choose PDF. Up to ${mb} MB${many ? ` each, up to ${q.maxFiles} files` : ''}. If yours is larger, export it at reduced quality or paste the text instead.`);
+    box.append(legend, opts);
+    field.insertBefore(box, textWrap);
+
+    const modeKey = `${draftKey(q.id)}:mode`;
+    const apply = (m, chosen) => {
+      mode = m;
+      textWrap.hidden = m !== 'text';
+      fileWrap.hidden = m !== 'file';
+      for (const [v, r] of Object.entries(radios)) {
+        r.input.checked = v === m;
+        r.label.classList.toggle('sel', v === m);
+      }
+      try { if (m) localStorage.setItem(modeKey, m); } catch { /* fine */ }
+      if (chosen && m === 'text' && focusEditor) focusEditor();
+      showError('');
+      refreshNext();
+    };
+    let initial = null;
+    if (state.upload) initial = 'file';
+    else if (hadDraft) initial = 'text';
+    else {
+      try { initial = localStorage.getItem(modeKey); } catch { /* fine */ }
+      if (initial !== 'text' && initial !== 'file') initial = null;
+    }
+    apply(initial, false);
+  }
+
+  const note = chooser ? null : requirementNote(q);
   if (note) {
     const p2 = document.createElement('p');
     p2.className = 'muted small';
@@ -1083,18 +1489,30 @@ function renderQuestion(state) {
   /**
    * One gate over both halves of an answer, because 'either' cannot be expressed as two
    * independent checks: neither half is required alone, but leaving both empty is not an answer.
-   * The server re-checks all of this; this exists so the candidate hears why before the round trip.
+   * The server re-checks all of this; this exists so the candidate hears why before the round trip,
+   * and so the confirmation dialog is only ever raised over an answer that is actually complete.
    */
   const requirementCheck = () => {
-    const hasFile = attachment ? attachment.has() : false;
-    const hasText = !isBlank(read());
+    // With a chooser shown, only the chosen half counts: a file attached earlier does not stand in
+    // for a typed answer once they have said they are typing, and vice versa.
+    const hasFile = attachment && mode !== 'text' ? attachment.has() : false;
+    const answer = read();
+    const textPart = q.type === 'decision' ? (answer && answer.text) : answer;
+    const hasText = !isBlank(textPart);
+    if (q.type === 'decision' && !(answer && Number.isInteger(answer.option))) return REJECTIONS.no_choice;
+    if (q.links && readLinks().some((l) => !/^https?:\/\/\S+$/i.test(l))) return REJECTIONS.bad_link;
+    if (q.links && readLinks().length > q.links.max) return `Up to ${q.links.max} links here. Attach the rest as PDFs.`;
     const blankMsg = q.type === 'choice' ? 'Choose one option to continue.'
       : canRevise ? 'Write something to continue.'
       : 'Write something to continue. You cannot come back to this question, so if you are short of time, say what you would have done instead.';
     switch (q.require) {
       case 'file': return hasFile ? null : REJECTIONS.no_file;
       case 'both': return !hasFile ? REJECTIONS.no_file : !hasText ? 'Add a short written answer as well.' : null;
-      case 'either': return hasFile || hasText ? null : REJECTIONS.need_one;
+      case 'either':
+        if (chooser && mode === null) return 'Choose how you want to respond first: type it here, or attach a file.';
+        if (chooser && mode === 'file') return hasFile ? null : REJECTIONS.no_file;
+        if (chooser && mode === 'text') return hasText ? null : blankMsg;
+        return hasFile || hasText ? null : REJECTIONS.need_one;
       case 'optional': return null;
       default: return hasText ? null : blankMsg;
     }
@@ -1108,11 +1526,14 @@ function renderQuestion(state) {
   let armed = false;
   const disarm = () => {
     armed = false;
+    next.classList.remove('danger');
     const box = $('.confirm-final', app);
     if (box) box.remove();
   };
   const arm = () => {
     armed = true;
+    // Red, because this is the one click with nothing after it.
+    next.classList.add('danger');
     next.textContent = 'Yes, submit everything';
     const box = document.createElement('div');
     box.className = 'confirm-final';
@@ -1155,10 +1576,36 @@ function renderQuestion(state) {
 
     if (q.isLast && !past && !armed && !confirmDiscard) return arm();
 
+    // A part that carries a confirmation statement is sealed here, so it gets one deliberate
+    // pause with what we are about to take spelled out.
+    if (q.confirm && !past && !confirmDiscard) {
+      const files = attachment ? attachment.list() : [];
+      const usingFile = mode === 'file' || (mode === null && files.length);
+      const textPart = q.type === 'decision' ? (value && value.text) : value;
+      const lines = [];
+      if (q.type === 'decision' && q.options && Number.isInteger(value && value.option)) {
+        lines.push(`Option selected: ${q.options[value.option]}`);
+      }
+      if (usingFile) for (const f of files) lines.push(`Attached: ${f.filename}${f.size ? ` (${kb(f.size)})` : ''}`);
+      if (!usingFile || !isBlank(textPart)) lines.push(`Typed response: ${plural(wordsOf(textPart), 'word')}`);
+      const ok = await confirmLockIn({
+        part: herePart ? herePart.label : null,
+        statement: q.confirm,
+        lines,
+      });
+      if (!ok) return;
+    }
+
     inFlight = true;
     next.disabled = true;
     next.textContent = 'Saving…';
-    const res = await api('answer', { index: q.index, questionId: q.id, value, confirmDiscard, ...signals });
+    const res = await api('answer', {
+      index: q.index, questionId: q.id, value, confirmDiscard, ...signals,
+      ...(q.links ? { links: readLinks() } : {}),
+      // Only ever true, and only reached by accepting the dialog above: the server refuses the
+      // answer without it, so the candidate's confirmation is what carries it.
+      ...(q.confirm && !past ? { confirmed: true } : {}),
+    });
     inFlight = false;
 
     if (isTransient(res)) {
@@ -1218,7 +1665,14 @@ function prefill(q, given, field, canEdit) {
       inputs[given.choiceIndex].checked = true;
       inputs[given.choiceIndex].closest('.opt').classList.add('sel');
     }
-  } else if (q.type === 'rich') {
+  } else if (q.type === 'rich' || q.type === 'decision') {
+    if (q.type === 'decision') {
+      const inputs = field.querySelectorAll('.opt input');
+      if (Number.isInteger(given.choiceIndex) && inputs[given.choiceIndex]) {
+        inputs[given.choiceIndex].checked = true;
+        inputs[given.choiceIndex].closest('.opt').classList.add('sel');
+      }
+    }
     const editor = field.querySelector('.rt-edit');
     if (editor) {
       editor.replaceChildren();
@@ -1296,6 +1750,53 @@ function fileLine(upload) {
   return p;
 }
 
+/**
+ * One submitted answer, read back. Everything a candidate handed in travels with it: the option
+ * picked on a decision, any attachments, any links. Text goes through renderStoredAnswer, which
+ * builds elements rather than parsing markup, so a candidate's own words can never be anything
+ * but words.
+ */
+function reviewItem(a) {
+  const wrap = document.createElement('section');
+  wrap.className = 'review-item';
+  const q = document.createElement('p');
+  q.className = 'review-q';
+  q.textContent = `Question ${a.number}. ${a.prompt}`;
+  const body = document.createElement('div');
+  body.className = 'review-a';
+  const files = Array.isArray(a.uploads) && a.uploads.length ? a.uploads : a.upload ? [a.upload] : [];
+  if (a.choice) {
+    const pick = document.createElement('p');
+    pick.className = 'review-choice';
+    const strong = document.createElement('strong');
+    strong.textContent = 'Recommended: ';
+    pick.append(strong, document.createTextNode(a.choice));
+    body.append(pick);
+  }
+  renderStoredAnswer(body, a.value, {
+    blank: a.skipped ? 'Not reached: the time for this part ran out.' : files.length ? null : '(left blank)',
+  });
+  for (const f of files) body.append(fileLine(f));
+  if (Array.isArray(a.links) && a.links.length) {
+    const lbl = document.createElement('p');
+    lbl.className = 'review-choice';
+    const strong = document.createElement('strong');
+    strong.textContent = 'Links: ';
+    lbl.append(strong);
+    body.append(lbl);
+    const ul = document.createElement('ul');
+    ul.className = 'files-list';
+    for (const l of a.links) {
+      const li = document.createElement('li');
+      li.textContent = l;
+      ul.append(li);
+    }
+    body.append(ul);
+  }
+  wrap.append(q, body);
+  return wrap;
+}
+
 let reviewOpen = false;
 
 /**
@@ -1349,21 +1850,7 @@ async function openReview() {
     p.textContent = 'You have not submitted anything yet.';
     dlg.append(p);
   }
-  for (const a of answers) {
-    const wrap = document.createElement('section');
-    wrap.className = 'review-item';
-    const q = document.createElement('p');
-    q.className = 'review-q';
-    q.textContent = `Question ${a.number}. ${a.prompt}`;
-    const body = document.createElement('div');
-    body.className = 'review-a';
-    renderStoredAnswer(body, a.value, {
-      blank: a.skipped ? 'Not reached: the time for this part ran out.' : a.upload ? null : '(left blank)',
-    });
-    if (a.upload) body.append(fileLine(a.upload));
-    wrap.append(q, body);
-    dlg.append(wrap);
-  }
+  for (const a of answers) dlg.append(reviewItem(a));
 
   const foot = document.createElement('div');
   foot.className = 'review-foot';
@@ -1386,6 +1873,194 @@ function reviewButton(state) {
   b.textContent = `Review your ${plural(n, 'submitted answer')}`;
   b.addEventListener('click', () => openReview());
   return b;
+}
+
+/* --------------------------------------------------------------------- lock in ------- */
+
+/** Words in a formatted answer, counted the same way the live counter under the box does. */
+function wordsOf(value) {
+  const text = Array.isArray(value)
+    ? value.map((b) => (b.runs || []).map((r) => r.t || '').join('')).join(' ').trim()
+    : String(value == null ? '' : value).trim();
+  return text ? text.split(/\s+/).length : 0;
+}
+
+/**
+ * The last look before a part is sealed.
+ *
+ * The tick box above the button is the candidate's statement that their response covers every
+ * question in the part. This is the moment we act on it: it repeats the statement, says back what
+ * we are about to take (the option picked, and whether the response is typed or a PDF, named), and
+ * asks once. It is a modal because a part becoming unchangeable deserves an interruption, and
+ * because "I attached the wrong file" is the mistake it exists to catch.
+ *
+ * Resolves true to go ahead, false to go back to the question. Nothing is sent from here.
+ */
+function confirmLockIn({ part, statement, lines }) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement('dialog');
+    dlg.className = 'lockin';
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      dlg.close();
+      dlg.remove();
+      resolve(ok);
+    };
+
+    const h = document.createElement('h2');
+    h.textContent = part ? `Lock in ${part}?` : 'Lock in this answer?';
+    dlg.append(h);
+
+    const asks = document.createElement('p');
+    asks.className = 'lockin-label';
+    asks.textContent = 'By locking in you confirm:';
+    const said = document.createElement('p');
+    said.className = 'lockin-statement';
+    said.textContent = statement;
+    dlg.append(asks, said);
+
+    if (lines.length) {
+      const what = document.createElement('p');
+      what.className = 'lockin-label';
+      what.textContent = 'What we will record:';
+      const ul = document.createElement('ul');
+      ul.className = 'lockin-list';
+      for (const l of lines) {
+        const li = document.createElement('li');
+        li.textContent = l;
+        ul.append(li);
+      }
+      dlg.append(what, ul);
+    }
+
+    const warn = document.createElement('p');
+    warn.className = 'muted small';
+    warn.textContent = 'Once you continue, this part is final and cannot be changed.';
+    dlg.append(warn);
+
+    const foot = document.createElement('div');
+    foot.className = 'lockin-foot';
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'secondary';
+    back.textContent = 'Not yet, take me back';
+    back.addEventListener('click', () => finish(false));
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'primary danger';
+    go.textContent = 'Yes, lock it in';
+    go.addEventListener('click', () => finish(true));
+    foot.append(back, go);
+    dlg.append(foot);
+
+    // Escape means "not yet". The browser fires cancel for it, and closing without an answer
+    // would leave the caller waiting forever.
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(false); });
+    document.body.append(dlg);
+    dlg.showModal();
+    back.focus();
+  });
+}
+
+/* ---------------------------------------------------------------------- submit ------- */
+
+/**
+ * The last screen: everything submitted, read back, and one deliberate hand-in.
+ *
+ * Nothing here can be changed, and the button sends no answer. What it does is close the sitting,
+ * which is why the screen exists: a candidate who has just submitted their final answer otherwise
+ * has no way to tell whether the exercise is over or what we actually received.
+ */
+function renderReviewScreen(state) {
+  stopClock();
+  onQuestion = false;
+  deadline = null;
+  currentIndex = -1;
+  currentQid = null;
+  clearAllDrafts();
+  screen('review');
+
+  const r = state.reviewScreen || {};
+  const p = state.progress;
+  const here = p && p.sections ? p.sections.find((s) => s.state === 'current') : null;
+  hook('section').textContent = here && p ? `Step ${p.sectionNumber} of ${p.sectionTotal} · ${here.label}` : '';
+  renderProgress(state);
+
+  hook('heading').textContent = r.heading || 'Review and submit';
+  hook('body').textContent = r.body || '';
+
+  const list = hook('list');
+  const answers = Array.isArray(r.answers) ? r.answers : [];
+  if (!answers.length) {
+    const none = document.createElement('p');
+    none.className = 'muted';
+    none.textContent = 'We have nothing recorded against your name yet.';
+    list.append(none);
+  }
+  for (const a of answers) list.append(reviewItem(a));
+
+  if (r.note) {
+    const note = hook('note');
+    note.hidden = false;
+    const ul = document.createElement('ul');
+    const li = document.createElement('li');
+    li.textContent = r.note;
+    ul.append(li);
+    note.append(ul);
+  }
+
+  hook('finality').textContent = state.canRevise
+    ? 'Submitting closes the exercise.'
+    : 'Nothing can be changed after this.';
+
+  const btn = hook('submit');
+  const label = r.button || 'Submit and finish';
+  btn.textContent = label;
+
+  // The same deliberate pause the last question used to carry, moved here with the final click.
+  let armed = false;
+  const disarm = () => {
+    armed = false;
+    btn.classList.remove('danger');
+    btn.textContent = label;
+    const box = $('.confirm-final', app);
+    if (box) box.remove();
+  };
+  btn.addEventListener('click', async () => {
+    if (inFlight) return;
+    if (!armed) {
+      armed = true;
+      // Red, because this is the one click with nothing after it.
+      btn.classList.add('danger');
+      btn.textContent = r.confirm || 'Yes, submit everything';
+      const box = document.createElement('div');
+      box.className = 'confirm-final';
+      const msg = document.createElement('p');
+      msg.textContent = 'Once you submit, the exercise is finished and nothing can be changed.';
+      const notYet = document.createElement('button');
+      notYet.type = 'button';
+      notYet.className = 'secondary';
+      notYet.textContent = 'Not yet';
+      notYet.addEventListener('click', () => { disarm(); btn.focus(); });
+      box.append(msg, notYet);
+      hook('err').parentNode.insertBefore(box, hook('err'));
+      btn.focus();
+      return;
+    }
+    inFlight = true;
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+    const res = await api('submit');
+    inFlight = false;
+    if (isTransient(res)) {
+      btn.disabled = false;
+      btn.textContent = r.confirm || 'Yes, submit everything';
+      return showError(res.detail || RETRY_MSG);
+    }
+    render(res);
+  });
 }
 
 /* ------------------------------------------------------------------------ done ------- */
@@ -1544,6 +2219,7 @@ function render(state) {
     return renderQuestion(state);
   }
   if (state.phase === 'ready') return renderInstructions(state);
+  if (state.phase === 'review') return renderReviewScreen(state);
   return renderDone(state);
 }
 

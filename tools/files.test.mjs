@@ -149,7 +149,8 @@ function storeWithFiles() {
   };
 }
 
-const CFG = { ...config(), questions: UPLOAD_SPEC };
+const PARTS = [{ id: 'part1', label: 'Part 1', summary: 'Only part', recommendedMin: 30 }];
+const CFG = config({ questions: UPLOAD_SPEC, sections: PARTS, durationSec: 30 * 60 });
 const T0 = 1_800_000_000_000;
 
 async function ready(store) {
@@ -291,7 +292,11 @@ test('a test with uploads refuses to run on a store that cannot hold files', () 
 
 test('a test with no uploads runs on any store', () => {
   const kvOnly = { async get() { return null; }, async put() {}, async delete() {} };
-  assert.equal(readiness(kvOnly, config()).ok, true);
+  const textOnly = config({
+    questions: [{ id: 'only', section: 'part1', type: 'short', prompt: 'Words?', next: null }],
+    sections: PARTS,
+  });
+  assert.equal(readiness(kvOnly, textOnly).ok, true);
 });
 
 test('a store that can hold files is ready', () => {

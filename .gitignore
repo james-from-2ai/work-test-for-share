@@ -3,3 +3,8 @@ tools/.dev-store.json
 # Files uploaded while rehearsing. Same reasoning, and they can be large.
 tools/.dev-uploads/
 node_modules/
+# The assembled authoring-tool deployment. Cloudflare Pages builds it; committing it would
+# mean two copies of builder.html drifting apart.
+builder-dist/
+# Wrangler's local state, written by `wrangler pages dev`.
+.wrangler/

@@ -16,8 +16,12 @@
   --focus: #2f7fd8;
 }
 
+/* Dark palette. Applied two ways: by the device setting unless the candidate has chosen light,
+   and by an explicit choice from the toggle at the top right (data-theme on <html>). The toggle
+   wins in both directions, so the two blocks below carry the same values. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #16171a;
     --card: #1e2024;
     --ink: #ececea;
@@ -30,24 +34,22 @@
     --focus: #6fb1f0;
   }
 }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #16171a;
+  --card: #1e2024;
+  --ink: #ececea;
+  --muted: #9b9b96;
+  --line: #32353a;
+  --accent: #4bab90;
+  --accent-ink: #10221c;
+  --warn: #e0a45c;
+  --danger: #e8756c;
+  --focus: #6fb1f0;
+}
+:root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
-
-/* Public demo banner. Deliberately unmissable: this instance has no password, so anyone landing
-   here has to understand that what they type is readable by anyone else with the link. */
-.demo-banner {
-  padding: 0.7rem 1.25rem;
-  font-size: 0.88rem;
-  line-height: 1.5;
-  text-align: center;
-  color: #4a2c00;
-  background: #ffe9c2;
-  border-bottom: 1px solid #e0a45c;
-}
-.demo-banner strong { font-weight: 700; }
-@media (prefers-color-scheme: dark) {
-  .demo-banner { color: #ffe0b0; background: #40300f; border-bottom-color: #7a5a1c; }
-}
 
 body {
   margin: 0;
@@ -57,8 +59,10 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* About the width of a Google Doc page. The brief is a long read, and a narrow column makes it
+   longer still. */
 .wrap {
-  max-width: 46rem;
+  max-width: 54rem;
   margin: 0 auto;
   padding: 2.5rem 1.25rem 4rem;
 }
@@ -66,8 +70,41 @@ body {
 .card {
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 1.75rem;
+  border-radius: 16px;
+  padding: 2rem 2.25rem;
+  box-shadow: 0 1px 2px rgba(20, 30, 28, 0.04), 0 12px 32px -20px rgba(20, 30, 28, 0.18);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .card { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -20px rgba(0, 0, 0, 0.6); }
+}
+:root[data-theme="dark"] .card { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -20px rgba(0, 0, 0, 0.6); }
+
+/* Light or dark, top right, remembered in this browser. */
+.theme-toggle {
+  position: fixed;
+  top: 0.9rem;
+  right: 0.9rem;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(20, 30, 28, 0.06);
+}
+.theme-toggle:hover { color: var(--ink); border-color: var(--accent); }
+.theme-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.theme-toggle .ico { font-size: 0.95rem; line-height: 1; }
+@media (max-width: 40rem) {
+  .theme-toggle { top: 0.5rem; right: 0.5rem; padding: 0.35rem 0.55rem; }
+  .theme-toggle .lbl-text { display: none; }
 }
 
 @media (max-width: 30rem) {
@@ -75,9 +112,9 @@ body {
   .card { padding: 1.15rem; border-radius: 10px; }
 }
 
-h1 { font-size: 1.35rem; line-height: 1.35; margin: 0 0 0.85rem; font-weight: 650; }
+h1 { font-size: 1.55rem; line-height: 1.3; margin: 0 0 0.85rem; font-weight: 700; letter-spacing: -0.01em; }
 .sub { font-size: 0.95rem; font-weight: 700; margin: 1.4rem 0 0.4rem; }
-.prompt { font-size: 1.2rem; margin-bottom: 0.6rem; }
+.prompt { font-size: 1.3rem; margin-bottom: 0.6rem; letter-spacing: -0.01em; }
 p { margin: 0 0 0.9rem; }
 .muted { color: var(--muted); }
 .small { font-size: 0.85rem; }
@@ -91,8 +128,46 @@ p { margin: 0 0 0.9rem; }
   margin-bottom: 0.5rem;
 }
 
-.rules { margin: 0 0 1.1rem; padding-left: 1.15rem; }
-.rules li { margin-bottom: 0.55rem; }
+/* The rules as one panel, each a labelled section divided by a hairline. One block to read
+   rather than a stack of six, with the bold leads doing the signposting. */
+.rules {
+  margin: 0 0 1.35rem;
+  padding: 0 1.15rem;
+  list-style: none;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.rules li {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--line);
+  line-height: 1.55;
+}
+.rules li:last-child { border-bottom: 0; }
+.rules li strong { display: block; margin-bottom: 0.2rem; font-size: 0.95rem; }
+
+/* Time, structure, format: the three things read before anything else. */
+.glance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.7rem;
+  margin: 0 0 1.35rem;
+}
+.glance-tile {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.8rem 0.95rem;
+}
+.glance-k {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+.glance-v { font-size: 0.92rem; line-height: 1.5; }
 
 .bar {
   display: flex;
@@ -129,41 +204,56 @@ p { margin: 0 0 0.9rem; }
 .clock.warn { color: var(--warn); border-color: currentColor; }
 .clock.danger { color: var(--danger); border-color: currentColor; }
 
-/* Segmented progress. Each segment's width is its share of the recommended time, not an equal
-   slice, so the bar answers "how much is left" rather than "how many questions are left". */
-.track { display: flex; gap: 3px; margin-bottom: 0.5rem; }
+/* Progress as a stepper. Each part is a step: a numbered dot, its label, a slim track that fills
+   as questions are answered, and the time it is expected to take. Widths are still proportional
+   to recommended minutes, so the bar answers "how much is left" rather than "how many questions". */
+.track { display: flex; gap: 1rem; margin: 0.25rem 0 0.6rem; align-items: flex-start; }
 .seg {
   position: relative;
   flex-basis: 0;
-  height: 1.45rem;
-  border-radius: 5px;
-  background: var(--line);
-  overflow: hidden;
+  /* Wide enough that a short part's label is not clipped to nothing. The bar is weighted by how
+     long each part takes, and a five minute step next to a two and a half hour one would otherwise
+     be a sliver with an ellipsis where its name should be. */
+  min-width: 9.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
+.seg-head { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.seg-dot {
+  flex: none;
+  width: 1.5rem; height: 1.5rem;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.72rem; font-weight: 700;
+  color: var(--muted);
+  background: var(--card);
+  border: 1.5px solid var(--line);
+}
+.seg-tag {
+  font-size: 0.82rem; font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.seg-sub { font-size: 0.74rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg-bar { position: relative; height: 0.4rem; border-radius: 999px; background: var(--line); overflow: hidden; }
 .seg-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
+  position: absolute; inset: 0 auto 0 0;
   width: 0;
+  border-radius: 999px;
   background: var(--accent);
   transition: width 0.3s ease;
 }
-.seg-tag {
-  position: relative;
-  display: block;
-  padding: 0 0.45rem;
-  font-size: 0.68rem;
-  font-weight: 700;
-  line-height: 1.45rem;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--muted);
+.seg.current .seg-dot { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.seg.current .seg-tag { color: var(--ink); }
+.seg.done .seg-dot { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.seg.done .seg-tag { color: var(--ink); }
+.seg.done .seg-fill { width: 100%; }
+@media (max-width: 40rem) {
+  .track { gap: 0.5rem; }
+  .seg { min-width: 5.5rem; }
+  .seg-sub { display: none; }
 }
-.seg.current { box-shadow: inset 0 0 0 1.5px var(--accent); }
-.seg.current .seg-tag, .seg.done .seg-tag { color: var(--ink); }
-/* The finished segment is solid accent, so its label has to flip to read against it. */
-.seg.done .seg-tag { color: var(--accent-ink); }
 
 .track-note { margin: 0 0 1.35rem; line-height: 1.5; }
 
@@ -175,9 +265,13 @@ p { margin: 0 0 0.9rem; }
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 1rem 1.1rem 0.6rem;
+  padding: 1.4rem 1.6rem 1rem;
   margin: 0 0 1.5rem;
-  font-size: 0.92rem;
+  font-size: 1rem;
+  line-height: 1.65;
+}
+@media (max-width: 40rem) {
+  .brief { padding: 1rem 1.1rem 0.7rem; }
 }
 .brief-h {
   font-size: 0.72rem;
@@ -187,7 +281,82 @@ p { margin: 0 0 0.9rem; }
   color: var(--muted);
   margin: 0 0 0.7rem;
 }
-.brief p { margin: 0 0 0.75rem; }
+/* pre-line, so a multi-paragraph memo written with blank lines in the builder reads as
+   paragraphs rather than collapsing into one block. */
+.brief p { margin: 0 0 0.85rem; white-space: pre-line; }
+/* Section breaks inside a long packet: a rule above each subheading, so the eye can find the
+   start of the pilot, the model, the options, without reading everything in between. */
+.brief-sub {
+  font-size: 1.08rem;
+  font-weight: 700;
+  margin: 1.7rem 0 0.6rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--line);
+}
+.brief-sub:first-of-type { margin-top: 0.2rem; padding-top: 0; border-top: 0; }
+.brief ul { margin: 0 0 0.85rem; padding-left: 1.25rem; }
+.brief ul li { margin-bottom: 0.35rem; }
+
+/* Tables sit in their own bordered panel with a shaded header and alternating rows, so a table
+   of fourteen inputs reads as a table and not as a run of text that happens to line up. */
+.brief-table {
+  overflow-x: auto;
+  margin: 0.4rem 0 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+.brief-table table { border-collapse: collapse; width: 100%; font-size: 0.9rem; line-height: 1.45; }
+.brief-table th, .brief-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+.brief-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  background: var(--bg);
+}
+.brief-table tbody tr:nth-child(even) td { background: rgba(127, 127, 127, 0.06); }
+.brief-table tbody tr:last-child td { border-bottom: 0; }
+.brief-table td:first-child { font-weight: 600; }
+
+/* A callout for instructions about the exercise itself, tinted so it is visibly not part of the
+   case. Bullet points, because that is how people read instructions. */
+.brief-note {
+  margin: 0.2rem 0 1.2rem;
+  padding: 0.9rem 1.1rem 0.5rem;
+  border-left: 4px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  background: color-mix(in srgb, var(--accent) 9%, var(--card));
+}
+.brief-note-title {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.09em; font-weight: 700;
+  color: var(--accent); margin: 0 0 0.45rem;
+}
+.brief-note p { margin: 0 0 0.6rem; }
+.brief-note ul { margin: 0 0 0.6rem; padding-left: 1.2rem; }
+.brief-note ul li { margin-bottom: 0.35rem; }
+
+/* Parallel things as cards: options side by side, questions stacked and numbered by their titles. */
+.cards { display: grid; gap: 0.75rem; margin: 0.4rem 0 1.1rem; }
+.cards.grid { grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+.cards.stack { grid-template-columns: 1fr; }
+.card-item {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.95rem 1.1rem 0.6rem;
+  font-size: 0.95rem;
+}
+.card-item h4 { margin: 0 0 0.5rem; font-size: 0.98rem; line-height: 1.35; }
+.card-item p { margin: 0 0 0.6rem; }
+.card-item ul { margin: 0 0 0.6rem; padding-left: 1.15rem; }
+.card-item ul li { margin-bottom: 0.3rem; }
+.card-item .card-after { color: var(--muted); font-size: 0.9rem; }
 
 .quote {
   margin: 0 0 0.85rem;
@@ -253,6 +422,27 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, label:focus-w
 .opt:hover { border-color: var(--accent); }
 .opt input { margin: 0.25rem 0 0; flex: none; accent-color: var(--accent); }
 .opt.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.opt .opt-sub { display: block; font-size: 0.85rem; color: var(--muted); margin-top: 0.15rem; line-height: 1.45; }
+
+/* A decision question: pick an option, then the write-up. Two labelled parts of one answer. */
+.part-label { font-size: 0.95rem; font-weight: 700; margin: 1.2rem 0 0.5rem; }
+.part-help { font-size: 0.88rem; color: var(--muted); margin: -0.2rem 0 0.6rem; }
+.part-docs a { color: var(--accent); font-weight: 600; }
+.links-wrap { margin: 0.4rem 0 0.9rem; }
+
+.links-input { min-height: 4.5rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9rem; }
+.part-label:first-child { margin-top: 0; }
+.files-list { margin: 0.45rem 0 0.4rem; padding-left: 1.1rem; font-size: 0.9rem; }
+.files-list li { margin-bottom: 0.2rem; }
+
+/* "Type it, or attach it": the two ways of answering an either/or question, side by side. */
+.mode-choice { margin: 0 0 1rem; }
+.mode-choice .lbl { margin-top: 0; margin-bottom: 0.45rem; }
+.opts.two { grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+.mode-text[hidden], .mode-file[hidden] { display: none; }
+
+/* The final confirmation is the one click with nothing after it. */
+button.primary.danger { background: var(--danger); }
 
 .counter { font-size: 0.78rem; color: var(--muted); text-align: right; margin: 0.3rem 0 0; }
 .counter.over { color: var(--danger); font-weight: 600; }
@@ -405,6 +595,57 @@ dialog.review::backdrop { background: rgba(0, 0, 0, 0.55); }
 .review-a h4 { font-size: 0.92rem; font-weight: 700; margin: 0.6rem 0 0.25rem; }
 .review-a ul, .review-a ol { margin: 0 0 0.6rem; padding-left: 1.4rem; }
 .review-a li { margin-bottom: 0.25rem; }
+
+/*
+ * The lock-in dialog: the last look before a part becomes unchangeable. Modal on purpose, and
+ * deliberately plain, so the only things competing for attention are what we are about to record
+ * and the two ways out of it.
+ */
+dialog.lockin {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--ink);
+  max-width: 34rem;
+  width: calc(100% - 2rem);
+  padding: 1.4rem 1.5rem 1.2rem;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+}
+dialog.lockin::backdrop { background: rgba(0, 0, 0, 0.55); }
+dialog.lockin h2 { font-size: 1.15rem; font-weight: 650; margin: 0 0 0.6rem; }
+.lockin-statement {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.85rem;
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg);
+  font-weight: 550;
+}
+.lockin-label { margin: 0 0 0.3rem; font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+.lockin-list { margin: 0 0 1rem; padding-left: 1.3rem; }
+.lockin-list li { margin-bottom: 0.25rem; }
+.lockin-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+
+/*
+ * The review-and-submit screen reads every answer back inside one panel, so the page reads as a
+ * record of what we hold rather than as another question waiting to be answered.
+ */
+.review-list {
+  margin: 1.3rem 0;
+  padding: 0 1.1rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.review-list .review-item:first-child { border-top: 0; }
+.review-list:empty { display: none; }
 
 .review-foot {
   position: sticky;

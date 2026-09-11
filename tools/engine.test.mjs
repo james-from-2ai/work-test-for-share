@@ -8,9 +8,28 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { handle, createCandidates, listCandidates, config } from '../functions/_lib/wt-engine.mjs';
-import { DURATION_SEC, GRACE_SEC, QUESTIONS, BRIEFS, SECTIONS } from '../functions/_lib/wt-questions.mjs';
+import {
+  handle as engineHandle, createCandidates, listCandidates as engineListCandidates, config as engineConfig,
+} from '../functions/_lib/wt-engine.mjs';
+import {
+  DURATION_SEC, GRACE_SEC, QUESTIONS, BRIEFS, SECTIONS, TIMING, NAVIGATION, INTEGRITY, INTRO, OUTRO,
+} from './fixtures/pm-test.mjs';
 import { sanitizeRich, richToText, richIsEmpty, MAX_BLOCKS } from '../functions/_lib/wt-rich.mjs';
+
+/**
+ * Every test here runs against the PM fixture rather than whatever test is compiled into
+ * wt-questions.mjs, so the guarantees under test are checked against a known shape (six
+ * questions, two parts, one clock, forward-only) whichever assessment this repo is currently
+ * deploying. The wrappers below make that the default for every call, and any test that passes
+ * its own overrides still gets the fixture underneath them.
+ */
+const FIXTURE = {
+  durationSec: DURATION_SEC, graceSec: GRACE_SEC, questions: QUESTIONS, sections: SECTIONS, briefs: BRIEFS,
+  timing: TIMING, navigation: NAVIGATION, integrity: INTEGRITY, intro: INTRO, outro: OUTRO,
+};
+const config = (overrides = {}) => engineConfig({ ...FIXTURE, ...overrides });
+const handle = (store, body, now, cfg = config()) => engineHandle(store, body, now, cfg);
+const listCandidates = (store, now, cfg = config()) => engineListCandidates(store, now, cfg);
 
 /** In-memory store with the same three methods as the KV and file-backed ones. */
 function memStore() {
@@ -372,10 +391,13 @@ test('closing registration tolerates the same, since a typo there fails open', (
 });
 
 test('a duration with stray whitespace is still read as a number', () => {
-  assert.equal(config({ durationSec: ' 900 ' }).durationSec, 900);
-  assert.equal(config({ durationSec: 'nonsense' }).durationSec, DURATION_SEC, 'garbage falls back to the default');
-  assert.equal(config({ durationSec: '0' }).durationSec, DURATION_SEC, 'zero would expire everyone instantly');
-  assert.equal(config({ durationSec: '-5' }).durationSec, DURATION_SEC);
+  // Garbage falls back to the COMPILED test's duration, whatever it is, which is what production
+  // relies on: DURATION_SEC in Cloudflare is an override, and a broken override must not win.
+  const compiled = engineConfig().durationSec;
+  assert.equal(engineConfig({ durationSec: ' 900 ' }).durationSec, 900);
+  assert.equal(engineConfig({ durationSec: 'nonsense' }).durationSec, compiled, 'garbage falls back to the default');
+  assert.equal(engineConfig({ durationSec: '0' }).durationSec, compiled, 'zero would expire everyone instantly');
+  assert.equal(engineConfig({ durationSec: '-5' }).durationSec, compiled);
 });
 
 test('with the flag on, reset clears the session and frees the email', async () => {

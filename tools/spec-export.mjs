@@ -14,7 +14,8 @@
 
 import { writeFileSync } from 'node:fs';
 import {
-  QUESTIONS, SECTIONS, BRIEFS, DURATION_SEC, GRACE_SEC, INTEGRITY, TIMING, NAVIGATION, INTRO, OUTRO,
+  QUESTIONS, SECTIONS, BRIEFS, DURATION_SEC, GRACE_SEC, INTEGRITY, TIMING, NAVIGATION, INTRO,
+  OUTRO, REVIEW,
 } from '../functions/_lib/wt-questions.mjs';
 
 const arg = (name) => {
@@ -30,6 +31,9 @@ const json = JSON.stringify({
   integrity: { blockPaste: INTEGRITY.blockPaste },
   intro: INTRO,
   outro: OUTRO,
+  // Left out until now, which broke the round trip in the one direction that matters: exporting
+  // the live test, editing it and applying it back silently dropped the review-and-submit screen.
+  review: REVIEW,
   // Not recoverable from the module, since a comment is not a value. Whoever exports an existing
   // file should paste the provenance from its header in here before applying it back, or the
   // regeneration will drop it.

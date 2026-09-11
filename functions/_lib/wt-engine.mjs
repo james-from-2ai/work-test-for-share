@@ -35,10 +35,11 @@
 
 import {
   QUESTIONS, BRIEFS, SECTIONS, DURATION_SEC, GRACE_SEC, INTEGRITY, TIMING, NAVIGATION, INTRO, OUTRO,
+  REVIEW,
 } from './wt-questions.mjs';
 import { sanitizeRich, richIsEmpty, richToText, richWordCount } from './wt-rich.mjs';
 import {
-  currentQuestionId, questionById, firstQuestionId, optionLabels, nextIdAfter,
+  currentQuestionId, questionById, firstQuestionId, optionLabels, nextIdAfter, outgoingIds,
   remainingRange, sectionOutlook,
 } from './wt-flow.mjs';
 import { checkUpload, acceptAttribute, describeAllowed, MAX_UPLOAD_BYTES } from './wt-files.mjs';
@@ -66,6 +67,16 @@ export function config(overrides = {}) {
   // or space that nobody can see in the dashboard. Comparing raw strings would then silently
   // ignore the setting, which for OPEN_REGISTRATION would fail OPEN. Trim and lowercase first.
   const flag = (v) => String(v ?? '').trim().toLowerCase();
+  // A whole test handed in as overrides (the dev server running a draft, the builder's preview,
+  // the test suites) gets the engine's documented defaults for anything it leaves out, not the
+  // compiled test's settings. Otherwise a draft that says nothing about timing would silently
+  // inherit whatever the live test happens to use, and a spec that "says nothing" would mean
+  // different things on different deployments. Production passes no questions, so it still
+  // reads everything from the compiled module.
+  const fromSpec = Array.isArray(overrides.questions) && overrides.questions.length > 0;
+  const base = fromSpec
+    ? { timing: { mode: 'total' }, navigation: { back: false, edit: false }, integrity: { blockPaste: false }, intro: {}, outro: {}, briefs: {}, review: null }
+    : { timing: TIMING, navigation: NAVIGATION, integrity: INTEGRITY, intro: INTRO || {}, outro: OUTRO || {}, briefs: BRIEFS, review: REVIEW || null };
   return {
     durationSec: Number.isFinite(d) && d > 0 ? Math.floor(d) : DURATION_SEC,
     graceSec: Number.isFinite(g) && g >= 0 ? Math.floor(g) : GRACE_SEC,
@@ -90,23 +101,58 @@ export function config(overrides = {}) {
     sections: Array.isArray(overrides.sections) && overrides.sections.length
       ? overrides.sections
       : SECTIONS,
-    briefs: overrides.briefs && typeof overrides.briefs === 'object' ? overrides.briefs : BRIEFS,
-    timing: normalizeTiming({ timing: TIMING, ...overrides }, sectionList(overrides)),
+    briefs: overrides.briefs && typeof overrides.briefs === 'object' ? overrides.briefs : base.briefs,
+    timing: normalizeTiming({ timing: base.timing, ...overrides }, sectionList(overrides)),
     // Both default to false, so a spec that says nothing behaves exactly as every earlier one
     // did. Neither is a UI preference: see the note at the top of this file.
     navigation: {
-      back: (overrides.navigation || NAVIGATION).back === true,
-      edit: (overrides.navigation || NAVIGATION).edit === true,
+      back: (overrides.navigation || base.navigation).back === true,
+      edit: (overrides.navigation || base.navigation).edit === true,
     },
     integrity: {
       blockPaste: overrides.integrity
         ? overrides.integrity.blockPaste === true
-        : INTEGRITY.blockPaste === true,
+        : base.integrity.blockPaste === true,
     },
-    intro: overrides.intro && typeof overrides.intro === 'object' ? overrides.intro : (INTRO || {}),
-    outro: overrides.outro && typeof overrides.outro === 'object' ? overrides.outro : (OUTRO || {}),
+    intro: overrides.intro && typeof overrides.intro === 'object' ? overrides.intro : base.intro,
+    outro: overrides.outro && typeof overrides.outro === 'object' ? overrides.outro : base.outro,
+    // A last screen between the final answer and the closing one, where the candidate reads back
+    // everything they submitted and hands the whole thing in deliberately. Null means the test
+    // ends the moment the last answer lands, which is how every test behaved before this existed.
+    review: reviewOf(overrides.review !== undefined ? overrides.review : base.review),
   };
 }
+
+/**
+ * The review-and-submit screen's settings, or null when a test does not have one.
+ *
+ * Worth being clear about what this screen is and is not. Every answer is already final when it
+ * arrives here: nothing on it can be changed, and the button does not send any answer. What it
+ * does is end the sitting, which is why it is worth having anyway. A candidate who has just
+ * submitted their last answer has no way to tell whether the exercise is over, and this screen
+ * both shows them what we received and lets them say they are done.
+ */
+function reviewOf(r) {
+  if (!r || typeof r !== 'object' || r.enabled === false) return null;
+  const mins = Number(r.recommendedMin);
+  return {
+    // Shown in the progress bar as the last step, and on the button that leads here.
+    label: clamp(r.label, 60).trim() || 'Review and submit',
+    summary: clamp(r.summary, 120).trim() || null,
+    recommendedMin: Number.isFinite(mins) && mins > 0 ? Math.floor(mins) : 5,
+    heading: clamp(r.heading, 200).trim() || 'Review and submit',
+    body: clamp(r.body, 1200).trim() || null,
+    note: clamp(r.note, 1200).trim() || null,
+    button: clamp(r.button, 80).trim() || 'Submit final answer',
+    confirm: clamp(r.confirm, 80).trim() || 'Yes, submit everything',
+  };
+}
+
+/**
+ * The id of the synthetic part the review screen occupies in the progress bar. Underscored so it
+ * cannot collide with a part an author named.
+ */
+const REVIEW_SECTION = '__review';
 
 /**
  * The rules shown on the instructions page, worked out from what the test is actually set to do.
@@ -125,10 +171,16 @@ export function introFor(cfg) {
   const rules = [];
   const t = cfg.timing;
 
+  // An author's suggested duration for an untimed test ("about 4 hours"). It rides on the engine's
+  // own timing rule so the two never sit apart, and it is only used when nothing is enforced: on a
+  // timed test the clock is the estimate.
+  const estimate = clamp(cfg.intro.estimate, 300).trim();
+
   if (t.mode === 'none') {
     rules.push({
       lead: 'There is no time limit.',
-      text: 'Take the time you need. Nothing expires while you are working and there is no countdown.',
+      text: 'This exercise is not timed. Nothing expires while you are working and there is no countdown.'
+        + (estimate ? ` ${estimate}` : ' Take the time you need.'),
     });
   } else if (t.mode === 'section') {
     rules.push({
@@ -168,21 +220,37 @@ export function introFor(cfg) {
 
   rules.push({
     lead: 'We only accept your first submission.',
-    text: 'Coming back with the same email address returns you to this same session rather than starting a '
-      + 'new one.',
+    text: 'Reopening this link, or coming back with the same email address, returns you to this same session '
+      + 'rather than starting a new one. Submitted answers are saved on our server.',
   });
 
-  const anyRich = cfg.questions.some((q) => q.type === 'rich');
-  if (anyRich && !cfg.integrity.blockPaste) {
+  // One rule about how to answer, not three. Formatting, files and the either/or are all part of
+  // the same decision a candidate makes, so they are said together. An author can add a sentence
+  // (intro.submitNote) for what only they know: which tool to draft in, how to make a PDF.
+  const anyRich = cfg.questions.some((q) => q.type === 'rich' || q.type === 'decision');
+  const withFiles = cfg.questions.filter((q) => attachmentOf(q) !== 'none');
+  const submitNote = clamp(cfg.intro.submitNote, 500).trim();
+  const formatting = anyRich
+    ? (cfg.integrity.blockPaste
+      ? ' The boxes take headings, subheadings, bold, italic, underline and lists.'
+      : ' The boxes take headings, subheadings, bold, italic, underline and lists, and pasting from a document keeps that formatting.')
+    : '';
+  if (withFiles.length) {
+    const kinds = new Set(withFiles.flatMap((q) => acceptOf(q)));
+    const eitherOr = withFiles.some((q) => requireOf(q) === 'either');
+    const doc = describeAllowed([...kinds]);
+    const mb = (MAX_UPLOAD_BYTES / 1_000_000).toFixed(1);
     rules.push({
-      lead: 'You can format your answers.',
-      text: 'The answer boxes take headings, subheadings, bold, italic, underline and lists. Pasting from a '
-        + 'document keeps the formatting we support and drops the rest.',
+      lead: 'How to submit your answers.',
+      text: (eitherOr
+        ? `For each write-up you choose one of two ways: type or paste your answer into the box, or attach a ${doc} up to ${mb} MB. Either is enough on its own.`
+        : `Type your answers into the boxes. Some questions also take a ${doc}, up to ${mb} MB.`)
+        + formatting + (submitNote ? ` ${submitNote}` : ''),
     });
   } else if (anyRich) {
     rules.push({
       lead: 'You can format your answers.',
-      text: 'The answer boxes take headings, subheadings, bold, italic, underline and lists.',
+      text: formatting.trim() + (submitNote ? ` ${submitNote}` : ''),
     });
   }
 
@@ -190,18 +258,6 @@ export function introFor(cfg) {
     rules.push({
       lead: 'Pasting is switched off.',
       text: 'Answers have to be typed, including anything you worked out somewhere else.',
-    });
-  }
-
-  const withFiles = cfg.questions.filter((q) => attachmentOf(q) !== 'none');
-  if (withFiles.length) {
-    const kinds = new Set(withFiles.flatMap((q) => acceptOf(q)));
-    const eitherOr = withFiles.some((q) => requireOf(q) === 'either');
-    rules.push({
-      lead: 'Some answers take a file.',
-      text: `You can attach a ${describeAllowed([...kinds])}, up to `
-        + `${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB.`
-        + (eitherOr ? ' Where a question accepts either, writing it out or attaching a file is enough on its own.' : ''),
     });
   }
 
@@ -214,8 +270,32 @@ export function introFor(cfg) {
     if (lead || text) rules.push({ lead, text });
   }
 
+  // The three answers a candidate scans for before reading anything else: how long, what shape,
+  // what format. Time and format are derived from what the engine enforces, the same as the rules
+  // above. Structure is the one an author knows better than the code does (what the parts are for,
+  // what locks when), so an author's text wins there, with a generated fallback.
+  const parts = cfg.sections.length;
+  const time = t.mode === 'none'
+    ? `Not timed. ${estimate || 'Take the time you need.'}`
+    : t.mode === 'section'
+      ? 'Each part has its own clock. When one runs out you move on to the next part.'
+      : `${Math.round(t.totalSec / 60)} minutes on one clock, which starts when you begin and does not stop.`;
+  const structure = clamp(cfg.intro.structure, 400).trim()
+    || `${parts > 1 ? `${parts} parts, one question at a time.` : 'One question at a time.'} `
+      + (cfg.navigation.edit ? 'You can go back and change answers.' : 'Answers are final once submitted.');
+  const format = withFiles.length
+    ? `Type or paste your answer, or attach a ${describeAllowed([...new Set(withFiles.flatMap((q) => acceptOf(q)))])} `
+      + `up to ${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB.`
+    : `Typed answers${cfg.integrity.blockPaste ? ', no pasting' : ''}.`;
+  const glance = [
+    { label: 'Time', text: time },
+    { label: 'Structure', text: structure },
+    { label: 'Format', text: format },
+  ];
+
   return {
     blurb: clamp(cfg.intro.blurb, 800).trim() || null,
+    glance,
     rules,
     sections: (Array.isArray(cfg.intro.sections) ? cfg.intro.sections : [])
       .map((s) => ({ heading: clamp(s && s.heading, 120).trim(), text: clamp(s && s.text, 2000).trim() }))
@@ -276,7 +356,8 @@ function outroFor(rec, cfg, phase, revisable) {
   const plural = (n) => (n === 1 ? '' : 's');
 
   const outOfTime = phase === 'expired' || rec.ranOut;
-  const title = outOfTime ? 'Time is up' : 'Thank you, that is submitted';
+  const first = String(rec.name || '').trim().split(/\s+/)[0];
+  const title = outOfTime ? 'Time is up' : first ? `Thank you, ${first}. That is all submitted.` : 'Thank you, that is submitted';
 
   let body;
   if (outOfTime && skipped) {
@@ -308,6 +389,29 @@ function outroFor(rec, cfg, phase, revisable) {
       ? String(cfg.outro.contactEmail).trim()
       : null,
   };
+}
+
+/**
+ * Everything a candidate has submitted, as the page reads it back to them. Used by the review
+ * dialog and by the review-and-submit screen, so the two can never disagree about what we hold.
+ *
+ * An attachment is part of an answer and has to travel with it: leaving it out showed a candidate
+ * who submitted a PDF and no text "(left blank)" against their own work, which is alarming in
+ * exactly the situation where being alarmed is most costly.
+ */
+function submitted(rec) {
+  return (rec.answers || []).map((a) => ({
+    number: a.index + 1,
+    prompt: a.prompt,
+    value: a.value,
+    format: a.format || 'text',
+    msSpent: a.msSpent,
+    upload: a.upload || null,
+    uploads: Array.isArray(a.uploads) ? a.uploads : a.upload ? [a.upload] : [],
+    choice: a.choice || null,
+    links: Array.isArray(a.links) ? a.links : [],
+    skipped: !!a.skipped,
+  }));
 }
 
 /* ------------------------------------------------------------ per-question rules ---- */
@@ -361,6 +465,22 @@ const pasteBlockedFor = (q, cfg) => (typeof q.blockPaste === 'boolean' ? q.block
 /** Which part a question belongs to, defaulting to the first. */
 const sectionIdOf = (q, cfg) => (q && q.section) || cfg.sections[0].id;
 
+/** The label of the part every route out of `q` leads into, if that is one part and not this one. */
+function nextPartOf(q, cfg) {
+  const ids = outgoingIds(q, cfg.questions);
+  if (!ids.length) return null;
+  // Every route out of here ends the questions. On a test with a review screen that is where they
+  // go next, so the button can say so instead of claiming to be the final submission.
+  if (ids.every((id) => !id)) return cfg.review ? cfg.review.label : null;
+  if (ids.some((id) => !id)) return null;
+  const parts = new Set(ids.map((id) => sectionIdOf(questionById(id, cfg.questions), cfg)));
+  if (parts.size !== 1) return null;
+  const [partId] = parts;
+  if (partId === sectionIdOf(q, cfg)) return null;
+  const section = cfg.sections.find((s) => s.id === partId);
+  return section ? section.label : null;
+}
+
 /** Tokens are opaque and unguessable; the token IS the candidate's authentication. */
 export function newToken() {
   const bytes = new Uint8Array(16);
@@ -374,6 +494,47 @@ export function newToken() {
  */
 const maxLengthOf = (q) => q.maxLength
   || (q.type === 'short' ? 300 : q.type === 'upload' ? 120 : 2000);
+
+/**
+ * A question can ask for web links alongside its answer (share links to AI conversations, say).
+ * Normalised here: the label and help an author wrote, a cap, and any documentation links to show,
+ * each checked to be an http(s) address because they become real hrefs on the page.
+ */
+const linksOf = (q) => {
+  if (!q || !q.links || typeof q.links !== 'object') return null;
+  const docs = (Array.isArray(q.links.docs) ? q.links.docs : [])
+    .filter((d) => d && /^https?:\/\/\S+$/i.test(String(d.url || '')))
+    .map((d) => ({ label: clamp(d.label, 120).trim() || String(d.url), url: String(d.url) }))
+    .slice(0, 6);
+  const max = Number.isInteger(q.links.max) && q.links.max > 0 ? Math.min(q.links.max, 20) : 10;
+  return {
+    prompt: clamp(q.links.prompt, 200).trim() || 'Links',
+    help: clamp(q.links.help, 900).trim() || null,
+    max,
+    docs,
+  };
+};
+
+/** Cleans a submitted list of links. Returns { links } or { bad } naming the first line that is not a URL. */
+const parseLinks = (raw, max) => {
+  const lines = (Array.isArray(raw) ? raw : String(raw == null ? '' : raw).split(/\r?\n/))
+    .map((l) => clamp(l, 500).trim())
+    .filter(Boolean);
+  for (const l of lines) if (!/^https?:\/\/\S+$/i.test(l)) return { bad: l };
+  return { links: [...new Set(lines)].slice(0, max) };
+};
+
+/** How many files a question takes: one unless the spec says more, and never more than ten. */
+const maxFilesOf = (q) => (Number.isInteger(q && q.maxFiles) && q.maxFiles > 1 ? Math.min(q.maxFiles, 10) : 1);
+
+/**
+ * The files attached to a question so far, always as a list. Single-file questions store one
+ * object and multi-file questions store an array; nothing outside this helper should care which.
+ */
+const filesOf = (rec, qid) => {
+  const u = rec && rec.uploads && rec.uploads[qid];
+  return Array.isArray(u) ? u.filter(Boolean) : u ? [u] : [];
+};
 
 /** The single whole-test duration, or null when there is no single clock to describe. */
 const durationFor = (cfg) => (cfg.timing.mode === 'total' ? cfg.timing.totalSec : null);
@@ -405,13 +566,32 @@ function publicQuestion(id, answers, cfg) {
     // give, and a guessed one would move under the candidate as they answer, which is the exact
     // thing a progress indicator exists to prevent.
     total: ahead.certain ? answered + ahead.max : null,
-    isLast: ahead.max <= 1,
+    // "Nothing else takes an answer after this", which is not the same as "this is the last
+    // screen": a review step still follows, and the client uses this to decide whether to arm
+    // the deliberate final confirmation.
+    isLast: ahead.max <= 1 && !cfg.review,
+    // The part this answer leads into, when every route out of here agrees and it is a different
+    // part. The page uses it to say "continue to Stage 2" on the button that seals Stage 1, so a
+    // candidate is never surprised by which click closed a part. A choice whose options lead to
+    // different parts, or one that ends the test, gives nothing rather than a guess.
+    nextPart: nextPartOf(q, cfg),
     type: q.type,
     prompt: q.prompt,
     context: q.context || null,
     // Labels only. optionLabels is what stops a branching option from telling the candidate
     // where it leads.
     options: optionLabels(q),
+    // A decision question is an option and a write-up on one screen; these label the two halves.
+    ...(q.type === 'decision' ? {
+      optionPrompt: clamp(q.optionPrompt, 200).trim() || null,
+      responsePrompt: clamp(q.responsePrompt, 200).trim() || null,
+    } : {}),
+    // Author wording for the type-or-attach chooser, when the defaults do not fit the question.
+    ...(q.modes && typeof q.modes === 'object' ? { modes: q.modes } : {}),
+    // A links field (share links to AI conversations, for instance), labelled by the author.
+    ...(linksOf(q) ? { links: linksOf(q) } : {}),
+    // A statement the candidate has to tick before this answer can be locked in.
+    ...(clamp(q.confirm, 300).trim() ? { confirm: clamp(q.confirm, 300).trim() } : {}),
     maxLength: maxLengthOf(q),
     placeholder: q.placeholder || null,
     brief: q.brief ? cfg.briefs[q.brief] || null : null,
@@ -424,6 +604,10 @@ function publicQuestion(id, answers, cfg) {
       acceptAttr: acceptAttribute(acceptOf(q)),
       acceptText: `Upload a ${describeAllowed(acceptOf(q))}, up to ${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB.`,
       maxBytes: MAX_UPLOAD_BYTES,
+      maxFiles: maxFilesOf(q),
+      // Author labels for the file part of a question, when it is a section of its own.
+      attachmentPrompt: clamp(q.attachmentPrompt, 200).trim() || null,
+      attachmentHelp: clamp(q.attachmentHelp, 600).trim() || null,
     } : {}),
   };
 }
@@ -442,24 +626,37 @@ const acceptOf = (q) => (Array.isArray(q.accept) && q.accept.length ? q.accept :
  * Safe to send in full. It describes the shape of the task, which the instructions page already
  * states outright, and never the content of a question the candidate has not reached.
  */
-function progressOf(answers, currentId, cfg) {
+function progressOf(answers, currentId, cfg, phase = 'running') {
   const questions = cfg.questions;
-  const allSections = cfg.sections;
   const inSection = (q) => sectionIdOf(q, cfg);
   const answeredIds = answers.map((a) => a.id);
-  const ahead = sectionOutlook(currentId, questions, answeredIds, inSection, allSections.map((s) => s.id));
+  const ahead = sectionOutlook(currentId, questions, answeredIds, inSection, cfg.sections.map((s) => s.id));
   const hereId = currentId == null ? null : inSection(questionById(currentId, questions));
+
+  // The review screen holds no questions, so it cannot be counted the way the others are. It is
+  // appended here rather than living in cfg.sections because the parts of the test are the
+  // author's list and this step is the engine's.
+  const allSections = cfg.review
+    ? [...cfg.sections, {
+      id: REVIEW_SECTION,
+      label: cfg.review.label,
+      summary: cfg.review.summary,
+      recommendedMin: cfg.review.recommendedMin,
+      isReview: true,
+    }]
+    : cfg.sections;
 
   let current = -1;
   const sections = allSections.map((s, i) => {
     const done = answers.filter((a) => inSection(questionById(a.id, questions)) === s.id).length;
     const up = ahead.get(s.id) || { min: 0, max: 0, certain: true };
-    const holdsCurrent = hereId === s.id;
+    const holdsCurrent = s.isReview ? phase === 'review' : hereId === s.id;
     if (holdsCurrent) current = i;
 
     // A branch can route around an entire part. Calling that part 'todo' would be a lie, and
     // calling it 'done' would be a different one, so it gets its own state.
     const state = holdsCurrent ? 'current'
+      : s.isReview ? (phase === 'done' || phase === 'expired' ? 'done' : 'todo')
       : up.max > 0 ? 'todo'
       : done ? 'done'
       : 'skipped';
@@ -469,6 +666,9 @@ function progressOf(answers, currentId, cfg) {
       label: s.label,
       summary: s.summary,
       recommendedMin: s.recommendedMin,
+      // The review step holds no questions, so the page has to describe it differently rather
+      // than reporting "0 questions" against it.
+      ...(s.isReview ? { isReview: true } : {}),
       // Only set in section mode, and it is what the client draws a per-part clock from.
       limitMin: cfg.timing.mode === 'section' && cfg.timing.limits[s.id]
         ? Math.round(cfg.timing.limits[s.id] / 60)
@@ -479,7 +679,7 @@ function progressOf(answers, currentId, cfg) {
       // Worked out here rather than in the page, because when the total is uncertain the honest
       // denominator is the shortest route still ahead, and that is not the client's business.
       fill: state === 'done' ? 100
-        : state === 'skipped' ? 0
+        : state === 'skipped' || s.isReview ? 0
         : Math.round((done / Math.max(1, done + up.min)) * 100),
     };
   });
@@ -590,7 +790,17 @@ function phaseOf(rec, now, cfg) {
   if (!rec.startedAt) return 'ready';
   // Finished means "this candidate's route has no next question", which with branching can
   // happen at very different answer counts for two people sitting the same test.
-  if (!currentQuestionId(rec.answers, cfg.questions)) return 'done';
+  if (!currentQuestionId(rec.answers, cfg.questions)) {
+    // Out of questions. On a test with a review screen the sitting is not over until the
+    // candidate hands it in there, unless a clock has already closed it for them: being asked to
+    // review at leisure something that has just been cut short would be a strange thing to do.
+    if (!cfg.review || rec.ranOut) return 'done';
+    if (cfg.timing.mode === 'total') {
+      const spent = deadlineOf(rec, cfg, null);
+      if (spent != null && now > spent + cfg.graceSec * 1000) return 'done';
+    }
+    return 'review';
+  }
   // Only a whole-test clock can expire a sitting. An untimed test never does, and in section
   // mode a spent clock moves the candidate on rather than ending things, which settleSections
   // has already applied by the time anything asks.
@@ -653,7 +863,11 @@ function view(rec, now, cfg, extra = {}) {
       out.question = publicQuestion(frontierId, rec.answers, cfg);
       // A file already uploaded for this question, so refreshing or coming back on another
       // device shows what is attached rather than an empty field they would upload to twice.
-      if (rec.uploads && rec.uploads[frontierId]) out.upload = rec.uploads[frontierId];
+      const attached = filesOf(rec, frontierId);
+      if (attached.length) {
+        out.upload = attached[attached.length - 1];
+        out.uploads = attached;
+      }
     } else {
       // Looking back at something already submitted. The question is rebuilt from the answers
       // that preceded it, so its numbering and its brief are what they were at the time.
@@ -676,15 +890,22 @@ function view(rec, now, cfg, extra = {}) {
     // Anchored on the question being LOOKED AT, not the frontier. After the route ends the frontier
     // is null, and progress built against it had no current part, which the page could not draw.
     // It is also simply more truthful: "Part 2 of 3" should describe the question on screen.
-    out.progress = progressOf(rec.answers, looking === null ? frontierId : shownId, cfg);
+    out.progress = progressOf(rec.answers, looking === null ? frontierId : shownId, cfg, phase);
+  }
+  if (phase === 'review') {
+    out.progress = progressOf(rec.answers, null, cfg, phase);
+    out.reviewScreen = { ...cfg.review, answers: submitted(rec) };
   }
   // On the instructions screen there is no current question, but the shape of the task is
   // exactly what someone deciding whether to press start wants to see.
   if (phase === 'ready') {
-    out.progress = progressOf([], firstQuestionId(cfg.questions), cfg);
+    out.progress = progressOf([], firstQuestionId(cfg.questions), cfg, phase);
     out.intro = introFor(cfg);
   }
-  if (phase === 'done' || phase === 'expired') out.outro = outroFor(rec, cfg, phase, revisable);
+  if (phase === 'done' || phase === 'expired') {
+    out.outro = outroFor(rec, cfg, phase, revisable);
+    if (!out.progress) out.progress = progressOf(rec.answers, null, cfg, phase);
+  }
   return out;
 }
 
@@ -789,12 +1010,23 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
 
       const q = questionById(targetId, cfg.questions);
       if (!q) return view(rec, now, cfg, { rejected: 'out_of_order' });
-      const rich = q.type === 'rich';
+      const rich = q.type === 'rich' || q.type === 'decision';
       const max = maxLengthOf(q);
 
       let value;
       let choiceIndex;
-      if (rich) {
+      let choice;
+      if (q.type === 'decision') {
+        // One answer in two parts: the option, which decides the route and is recorded as an index
+        // plus its label, and the write-up, which is sanitized like any formatted answer.
+        const raw = body.value && typeof body.value === 'object' && !Array.isArray(body.value) ? body.value : {};
+        const labels = optionLabels(q) || [];
+        const pick = Number(raw.option);
+        if (!Number.isInteger(pick) || labels[pick] == null) return view(rec, now, cfg, { rejected: 'no_choice' });
+        choiceIndex = pick;
+        choice = labels[pick];
+        value = sanitizeRich(raw.text, max).blocks;
+      } else if (rich) {
         // Formatted answers arrive as blocks, never as HTML. See wt-rich.mjs for why.
         value = sanitizeRich(body.value, max).blocks;
       } else if (q.type === 'upload') {
@@ -823,12 +1055,30 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       // Text and file are checked against one requirement rather than two independent flags,
       // because 'either' is not expressible as a pair of them: neither half is required on its
       // own, but leaving both empty is not an answer.
-      const hasFile = !!(rec.uploads && rec.uploads[q.id]);
+      // A question can demand an explicit confirmation ("I have answered all four questions") before
+      // it is locked in. Checked here, not only in the page, so it cannot be skipped by a hand-rolled
+      // request. It comes after the content checks, so the candidate hears about a missing answer
+      // before being asked to confirm one.
+      const needsConfirm = !!clamp(q.confirm, 300).trim();
+
+      // Links are optional and never stand in for the answer; they travel with it. A line that is
+      // not a web address is refused so a candidate can fix it, rather than quietly dropped.
+      let links;
+      const linkSpec = linksOf(q);
+      if (linkSpec) {
+        const parsed = parseLinks(body.links, linkSpec.max);
+        if (parsed.bad) return view(rec, now, cfg, { rejected: 'bad_link', badLink: parsed.bad });
+        links = parsed.links;
+      }
+
+      const files = filesOf(rec, q.id);
+      const hasFile = files.length > 0;
       const hasText = !richIsEmpty(value);
       const need = requireOf(q);
       if ((need === 'file' || need === 'both') && !hasFile) return view(rec, now, cfg, { rejected: 'no_file' });
       if ((need === 'text' || need === 'both') && !hasText) return view(rec, now, cfg, { rejected: 'empty' });
       if (need === 'either' && !hasFile && !hasText) return view(rec, now, cfg, { rejected: 'need_one' });
+      if (needsConfirm && body.confirmed !== true) return view(rec, now, cfg, { rejected: 'not_confirmed' });
 
       if (revising) {
         const previous = rec.answers[at];
@@ -836,7 +1086,10 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
           ...previous,
           value,
           ...(choiceIndex === undefined ? {} : { choiceIndex }),
-          ...(rec.uploads && rec.uploads[q.id] ? { upload: rec.uploads[q.id] } : {}),
+          ...(files.length ? { upload: files[0], uploads: files } : {}),
+          ...(choice ? { choice } : {}),
+          ...(links && links.length ? { links } : {}),
+          ...(needsConfirm ? { confirmed: true } : {}),
           skipped: false,
           revisedAt: now,
           revisions: (previous.revisions || 0) + 1,
@@ -883,7 +1136,10 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         ...(choiceIndex === undefined ? {} : { choiceIndex }),
         // Copied onto the answer rather than only living in rec.uploads, so the CSV and the
         // admin page can read one row without cross-referencing anything.
-        ...(rec.uploads && rec.uploads[q.id] ? { upload: rec.uploads[q.id] } : {}),
+        ...(files.length ? { upload: files[0], uploads: files } : {}),
+        ...(choice ? { choice } : {}),
+        ...(links && links.length ? { links } : {}),
+        ...(needsConfirm ? { confirmed: true } : {}),
         // Lets the admin page and the CSV know how to read `value` without re-deriving it from
         // the question list, which may have been edited since this answer was written.
         format: rich ? 'rich' : 'text',
@@ -899,8 +1155,11 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       settleSections(rec, now, cfg);
 
       // The route decides when the test is over, not a count: two candidates sitting the same
-      // test can finish after different numbers of questions.
-      if (!currentQuestionId(rec.answers, cfg.questions)) rec.finishedAt = now;
+      // test can finish after different numbers of questions. With a review screen the last
+      // answer only gets them there; handing in is a separate act.
+      if (!currentQuestionId(rec.answers, cfg.questions) && phaseOf(rec, now, cfg) !== 'review') {
+        rec.finishedAt = now;
+      }
       await store.put(KEY(token), rec);
       return view(rec, now, cfg);
     }
@@ -938,6 +1197,17 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         };
       }
 
+      const cap = maxFilesOf(q);
+      const existing = filesOf(rec, q.id);
+      if (cap > 1 && existing.length >= cap) {
+        return {
+          ok: false,
+          error: 'too_many_files',
+          status: 400,
+          detail: `This question takes up to ${cap} files, and ${cap} are already attached.`,
+        };
+      }
+
       const check = checkUpload({
         filename: body.filename,
         contentType: body.contentType,
@@ -955,7 +1225,7 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       });
 
       rec.uploads = rec.uploads || {};
-      rec.uploads[q.id] = {
+      const entry = {
         filename: check.filename,
         size: check.size,
         kind: check.kind,
@@ -963,8 +1233,10 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
         attachmentId: (stored && stored.attachmentId) || null,
         recordId: (stored && stored.recordId) || null,
       };
+      // Single-file questions replace; multi-file questions accumulate, up to the cap above.
+      rec.uploads[q.id] = cap > 1 ? [...existing, entry] : entry;
       await store.put(KEY(token), rec);
-      return view(rec, now, cfg, { uploaded: rec.uploads[q.id] });
+      return view(rec, now, cfg, { uploaded: entry, uploads: filesOf(rec, q.id) });
     }
 
     case 'review': {
@@ -975,17 +1247,17 @@ export async function handle(store, body, now = Date.now(), cfg = config()) {
       // The attachment is part of the answer and has to travel with it. Leaving it out meant a
       // candidate who submitted a PDF and no text was shown "(left blank)" against their own
       // work, which is alarming in exactly the situation where being alarmed is most costly.
-      return view(rec, now, cfg, {
-        review: rec.answers.map((a) => ({
-          number: a.index + 1,
-          prompt: a.prompt,
-          value: a.value,
-          format: a.format || 'text',
-          msSpent: a.msSpent,
-          upload: a.upload || null,
-          skipped: !!a.skipped,
-        })),
-      });
+      return view(rec, now, cfg, { review: submitted(rec) });
+    }
+
+    case 'submit': {
+      // The review screen's button. It sends no answer and changes nothing that was submitted;
+      // all it does is close the sitting. Anywhere other than the review screen it is a no-op
+      // rather than an error, so a double click or a stale tab just re-renders where they are.
+      if (phaseOf(rec, now, cfg) !== 'review') return view(rec, now, cfg);
+      rec.finishedAt = now;
+      await store.put(KEY(token), rec);
+      return view(rec, now, cfg);
     }
 
     case 'reset': {
@@ -1087,6 +1359,28 @@ async function register(store, body, now, cfg) {
  * for files on a store with nowhere to put them fails at the door, loudly, instead of halfway
  * through a candidate's sitting.
  */
+/**
+ * What test this deployment is actually serving: the route, in order, and whether it ends on a
+ * review screen.
+ *
+ * This exists because "is my change live?" turned out to be a question nobody could answer from
+ * the outside. Cloudflare Pages hands out an immutable hostname per deployment, so a bookmarked
+ * link keeps serving the build it was created on for as long as it is used, and the only symptom
+ * is a candidate walking an older version of the test. Reading it back from the engine that would
+ * enforce it is the one answer that cannot be stale.
+ *
+ * Admin-only: the ordered question ids describe the branches, which is exactly what a candidate
+ * must not be shown before they choose.
+ */
+export function liveShape(cfg = config()) {
+  return {
+    questions: cfg.questions.length,
+    route: cfg.questions.map((q) => (q.branchFrom ? `${q.id} (after ${q.branchFrom})` : q.id)),
+    parts: cfg.sections.map((s) => s.label),
+    review: !!cfg.review,
+  };
+}
+
 export function readiness(store, cfg = config()) {
   const needsFiles = cfg.questions.some((q) => attachmentOf(q) !== 'none');
   if (needsFiles && typeof store.putFile !== 'function') {
@@ -1212,8 +1506,12 @@ export function toCsv(rows) {
         // Formatted answers flatten to text with `##` and `-` markers kept, so the structure the
         // candidate chose survives into a spreadsheet cell.
         a.index + 1, a.id || '', a.prompt,
-        a.skipped ? '(not reached: time ran out on this part)' : richToText(a.value),
-        a.upload ? a.upload.filename : '', a.upload ? Math.round(a.upload.size / 1000) : '',
+        a.skipped ? '(not reached: time ran out on this part)'
+          : `${a.choice ? `Recommended: ${a.choice}\n` : ''}${richToText(a.value)}`
+            + (Array.isArray(a.links) && a.links.length ? `\nLinks:\n${a.links.join('\n')}` : ''),
+        (a.uploads || (a.upload ? [a.upload] : [])).map((f) => f.filename).join('; '),
+        (a.uploads || (a.upload ? [a.upload] : [])).length
+          ? Math.round((a.uploads || [a.upload]).reduce((n, f) => n + (f.size || 0), 0) / 1000) : '',
         Math.round(a.msSpent / 1000), richWordCount(a.value),
         a.pastes, a.blurs,
       ].map(esc).join(','));
